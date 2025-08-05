@@ -147,7 +147,11 @@ def export_onnx(
 
         print("Weights transferred successfully.")
 
-    transfer_weights(params[1].policy["params"], tf_policy_network)
+    def extract_policy_params(p):
+        policy = getattr(p, 'policy', p)
+        return policy.get('params') if isinstance(policy, dict) else None
+
+    transfer_weights(extract_policy_params(params[1]), tf_policy_network)
 
     # Example inputs for the model
     test_input = [np.ones((1, obs_size), dtype=np.float32)]
