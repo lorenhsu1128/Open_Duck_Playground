@@ -165,7 +165,14 @@ class Joystick(open_duck_mini_v2_base.OpenDuckMiniV2Env):
         self._feet_site_id = np.array(
             [self._mj_model.site(name).id for name in constants.FEET_SITES]
         )
-        self._floor_geom_id = self._mj_model.geom("floor").id
+
+        # self._floor_geom_id = self._mj_model.geom("floor").id
+
+        # 新的、更靈活的程式碼
+        all_geom_names = [self._mj_model.geom(i).name for i in range(self._mj_model.ngeom)]
+        floor_names = [name for name in all_geom_names if "floor" in name]
+        self._floor_geom_ids = jp.array([self._mj_model.geom(name).id for name in floor_names])
+
         self._feet_geom_id = np.array(
             [self._mj_model.geom(name).id for name in constants.FEET_GEOMS]
         )
@@ -210,6 +217,19 @@ class Joystick(open_duck_mini_v2_base.OpenDuckMiniV2Env):
 
         # init position/orientation in environment
         # x=+U(-0.05, 0.05), y=+U(-0.05, 0.05), yaw=U(-3.14, 3.14).
+        rng, key = jax.random.split(rng)
+        # dxy = jax.random.uniform(key, (2,), minval=-0.05, maxval=0.05)
+
+        # ----- 新增的程式碼 -----
+        # 隨機選擇出生區域：0 代表平坦地面，1 代表崎嶇地面
+        terrain_choice = jax.random.randint(key, shape=(), minval=0, maxval=2)
+        # 根據選擇，設定 X 軸的基礎出生點
+        start_x = jax.lax.cond(terrain_choice == 0,
+                            lambda: 0.0,   # 平坦地面的中心 X 座標
+                            lambda: 20.0)  # 崎嶇地面的中心 X 座標
+        # ----- 新增結束 -----
+
+        # 修改舊的程式碼，將隨機的 X 位置加到 start_x 上
         rng, key = jax.random.split(rng)
         dxy = jax.random.uniform(key, (2,), minval=-0.05, maxval=0.05)
 
@@ -310,13 +330,25 @@ class Joystick(open_duck_mini_v2_base.OpenDuckMiniV2Env):
                     metrics[f"cost/{k}"] = jp.zeros(())
         metrics["swing_peak"] = jp.zeros(())
 
-        contact = jp.array(
-            [
-                geoms_colliding(data, geom_id, self._floor_geom_id)
-                for geom_id in self._feet_geom_id
-            ]
-        )
+        # contact = jp.array(
+        #     [
+        #         geoms_colliding(data, geom_id, self._floor_geom_id)
+        #         for geom_id in self._feet_geom_id
+        #     ]
+        # )
+        # obs = self._get_obs(data, info, contact)
+
+        # 新的、修正後的接觸偵測邏輯
+        contact = jp.array([
+            # 檢查一隻腳 (foot_geom_id) 是否與任何一個地面 (floor_id) 發生碰撞
+            jp.any(jp.array([
+                geoms_colliding(data, foot_geom_id, floor_id)
+                for floor_id in self._floor_geom_ids
+            ]))
+            for foot_geom_id in self._feet_geom_id
+        ])
         obs = self._get_obs(data, info, contact)
+
         reward, done = jp.zeros(2)
         return mjx_env.State(data, obs, reward, done, metrics, info)
 
@@ -421,12 +453,22 @@ class Joystick(open_duck_mini_v2_base.OpenDuckMiniV2Env):
 
         state.info["motor_targets"] = motor_targets
 
-        contact = jp.array(
-            [
-                geoms_colliding(data, geom_id, self._floor_geom_id)
-                for geom_id in self._feet_geom_id
-            ]
-        )
+        # contact = jp.array(
+        #     [
+        #         geoms_colliding(data, geom_id, self._floor_geom_id)
+        #         for geom_id in self._feet_geom_id
+        #     ]
+        # )
+        # 新的、修正後的接觸偵測邏輯
+        contact = jp.array([
+            # 檢查一隻腳 (foot_geom_id) 是否與任何一個地面 (floor_id) 發生碰撞
+            jp.any(jp.array([
+                geoms_colliding(data, foot_geom_id, floor_id)
+                for floor_id in self._floor_geom_ids
+            ]))
+            for foot_geom_id in self._feet_geom_id
+        ])
+        
         contact_filt = contact | state.info["last_contact"]
         first_contact = (state.info["feet_air_time"] > 0.0) * contact_filt
         state.info["feet_air_time"] += self.dt

@@ -23,6 +23,8 @@ FLAT_TERRAIN_XML = ROOT_PATH / "xmls" / "scene_flat_terrain.xml"
 ROUGH_TERRAIN_XML = ROOT_PATH / "xmls" / "scene_rough_terrain.xml"
 FLAT_TERRAIN_BACKLASH_XML = ROOT_PATH / "xmls" / "scene_flat_terrain_backlash.xml"
 ROUGH_TERRAIN_BACKLASH_XML = ROOT_PATH / "xmls" / "scene_rough_terrain_backlash.xml"
+# 新增下面這一行
+COMBINED_TERRAIN_BACKLASH_XML = ROOT_PATH / "xmls" / "scene_combined_terrain_backlash.xml"
 
 
 def task_to_xml(task_name: str) -> epath.Path:
@@ -31,6 +33,8 @@ def task_to_xml(task_name: str) -> epath.Path:
         "rough_terrain": ROUGH_TERRAIN_XML,
         "flat_terrain_backlash": FLAT_TERRAIN_BACKLASH_XML,
         "rough_terrain_backlash": ROUGH_TERRAIN_BACKLASH_XML,
+        # 新增下面這一行
+        "combined_terrain_backlash": COMBINED_TERRAIN_BACKLASH_XML,
     }[task_name]
 
 

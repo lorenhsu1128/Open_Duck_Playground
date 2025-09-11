@@ -15,11 +15,25 @@ def reward_tracking_lin_vel(
 ) -> jax.Array:
     # lin_vel_error = jp.sum(jp.square(commands[:2] - local_vel[:2]))
     # return jp.nan_to_num(jp.exp(-lin_vel_error / self._config.reward_config.tracking_sigma))
-    y_tol = 0.1
+
+    # y_tol = 0.1
+    # error_x = jp.square(commands[0] - local_vel[0])
+    # error_y = jp.clip(jp.abs(local_vel[1] - commands[1]) - y_tol, 0.0, None)
+    # lin_vel_error = error_x + jp.square(error_y)
+    
+    # 計算 X 和 Y 兩個方向的速度誤差
+    # lin_vel_error = jp.sum(jp.square(commands[:2] - local_vel[:2]))
+
+    # 分別計算 X 和 Y 方向的誤差
     error_x = jp.square(commands[0] - local_vel[0])
-    error_y = jp.clip(jp.abs(local_vel[1] - commands[1]) - y_tol, 0.0, None)
-    lin_vel_error = error_x + jp.square(error_y)
+    error_y = jp.square(commands[1] - local_vel[1])
+
+    # 對 Y 軸的誤差給予一個較低的權重（例如 0.5），鼓勵機器人嘗試
+    y_axis_weight = 0.5
+    lin_vel_error = error_x + y_axis_weight * error_y
+
     return jp.nan_to_num(jp.exp(-lin_vel_error / tracking_sigma))
+    
 
 
 def reward_tracking_ang_vel(
