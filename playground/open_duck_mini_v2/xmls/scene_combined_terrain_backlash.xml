@@ -1,0 +1,68 @@
+<mujoco model="combined_terrain_backlash_scene">
+  <include file="open_duck_mini_v2_backlash.xml"/>
+
+  <compiler angle="radian" meshdir="assets" texturedir="assets"/>
+  <visual>
+    <headlight diffuse="0.6 0.6 0.6" ambient="0.3 0.3 0.3" specular="0 0 0"/>
+    <map znear="0.01"/>
+    <quality shadowsize="4096"/>
+  </visual>
+
+  <asset>
+    <texture name="grid" type="2d" builtin="checker" rgb1="0.1 0.2 0.3" rgb2="0.2 0.3 0.4" width="300" height="300" mark="edge" markrgb="0.2 0.3 0.4"/>
+    <material name="grid" texture="grid" texrepeat="1 1" texuniform="true" reflectance="0.2"/>
+    <hfield name="rough_terrain" file="hfield.png" size="20 20 0.3 0.1"/>
+  </asset>
+
+  <worldbody>
+    <light pos="0 0 1.5" dir="0 0 -1"/>
+
+    <geom name="flat_floor" pos="0 0 0" size="10 10 0.1" type="plane" material="grid" condim="3"/>
+
+    <geom name="rough_floor" pos="20 0 0" type="hfield" hfield="rough_terrain" material="grid" condim="3"/>
+
+  </worldbody>
+  <keyframe>
+    <key name="home"
+      qpos="
+        0 0 0.15
+        1 0 0 0
+
+        0.002 0
+        0.053 0
+        -0.63 0
+        1.368 0
+        -0.784 0
+
+        0
+        0
+        0
+        0
+
+        -0.003 0
+        -0.065 0
+        0.635 0
+        1.379 0
+        -0.796 0
+
+      "
+      ctrl="
+          0.002
+          0.053
+          -0.63
+          1.368
+          -0.784
+
+          0
+          0
+          0
+          0
+          
+          -0.003
+          -0.065
+          0.635
+          1.379
+          -0.796
+      "/>
+  </keyframe>
+</mujoco>
