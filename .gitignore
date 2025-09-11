@@ -9,3 +9,5 @@ checkpoints/
 .tmp/
 *.onnx
 *.TXT
+my_checkpoints/
+my_combined_checkpoints_finetune/
