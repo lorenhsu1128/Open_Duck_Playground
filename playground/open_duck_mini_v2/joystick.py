@@ -42,8 +42,11 @@ from playground.common.rewards import (
 from playground.open_duck_mini_v2.custom_rewards import reward_imitation
 
 # if set to false, won't require the reference data to be present and won't compute the reference motions polynoms for nothing
+# 模仿獎勵
 USE_IMITATION_REWARD = True
 USE_MOTOR_SPEED_LIMITS = True
+# 隨機推力
+USE_PUSH = True
 
 
 def default_config() -> config_dict.ConfigDict:
@@ -87,7 +90,7 @@ def default_config() -> config_dict.ConfigDict:
             tracking_sigma=0.01,  # was working at 0.01
         ),
         push_config=config_dict.create(
-            enable=True,
+            enable=USE_PUSH,
             interval_range=[5.0, 10.0],
             magnitude_range=[0.1, 1.0],
         ),
@@ -117,6 +120,8 @@ class Joystick(open_duck_mini_v2_base.OpenDuckMiniV2Env):
             config_overrides=config_overrides,
         )
         self._post_init()
+
+        
 
     def _post_init(self) -> None:
 
@@ -220,16 +225,15 @@ class Joystick(open_duck_mini_v2_base.OpenDuckMiniV2Env):
         rng, key = jax.random.split(rng)
         # dxy = jax.random.uniform(key, (2,), minval=-0.05, maxval=0.05)
 
-        # ----- 新增的程式碼 -----
-        # 隨機選擇出生區域：0 代表平坦地面，1 代表崎嶇地面
-        terrain_choice = jax.random.randint(key, shape=(), minval=0, maxval=2)
-        # 根據選擇，設定 X 軸的基礎出生點
-        start_x = jax.lax.cond(terrain_choice == 0,
-                            lambda: 0.0,   # 平坦地面的中心 X 座標
-                            lambda: 20.0)  # 崎嶇地面的中心 X 座標
-        # ----- 新增結束 -----
+        # # ----- 新增的程式碼 -----
+        # # 隨機選擇出生區域：0 代表平坦地面，1 代表崎嶇地面
+        # terrain_choice = jax.random.randint(key, shape=(), minval=0, maxval=2)
+        # # 根據選擇，設定 X 軸的基礎出生點
+        # start_x = jax.lax.cond(terrain_choice == 0,
+        #                     lambda: 0.0,   # 平坦地面的中心 X 座標
+        #                     lambda: 20.0)  # 崎嶇地面的中心 X 座標
+        # # ----- 新增結束 -----
 
-        # 修改舊的程式碼，將隨機的 X 位置加到 start_x 上
         rng, key = jax.random.split(rng)
         dxy = jax.random.uniform(key, (2,), minval=-0.05, maxval=0.05)
 
