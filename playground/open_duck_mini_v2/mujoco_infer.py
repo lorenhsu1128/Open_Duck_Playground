@@ -174,7 +174,7 @@ class MjInfer(MJInferBase):
             with mujoco.viewer.launch_passive(
                 self.model,
                 self.data,
-                show_left_ui=True,  # <-- 確保左側 UI 開啟 (雖然新版在右側)
+                show_left_ui=True,  # <-- 確保左側 UI 開啟
                 show_right_ui=True, # <-- 確保右側 UI 開啟
                 key_callback=self.key_callback,
             ) as viewer:
@@ -265,7 +265,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--model_path",
         type=str,
-        default="playground/open_duck_mini_v2/xmls/scene_flat_terrain.xml",
+        default="playground/open_duck_mini_v2/xmls/scene_flat_terrain_backlash.xml",
     )
     parser.add_argument("--standing", action="store_true", default=False)
 
