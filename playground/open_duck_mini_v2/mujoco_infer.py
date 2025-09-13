@@ -22,6 +22,10 @@ class MjInfer(MJInferBase):
 
         self.standing = standing
         self.head_control_mode = self.standing
+        
+        # --- [新增] 手動姿態調整模式的開關 ---
+        self.manual_pose_mode = False
+        # ------------------------------------
 
         # Params
         self.linearVelocityScale = 1.0
@@ -78,14 +82,10 @@ class MjInfer(MJInferBase):
 
         contacts = self.get_feet_contacts(data)
 
-        # if not self.standing:
-        # ref = self.PRM.get_reference_motion(*command[:3], self.imitation_i)
-
         obs = np.concatenate(
             [
                 gyro,
                 accelerometer,
-                # gravity,
                 command,
                 joint_angles - self.default_actuator,
                 joint_vel * self.dof_vel_scale,
@@ -94,8 +94,6 @@ class MjInfer(MJInferBase):
                 self.last_last_last_action,
                 self.motor_targets,
                 contacts,
-                # ref if not self.standing else np.array([]),
-                # [self.imitation_i]
                 self.imitation_phase,
             ]
         )
@@ -104,8 +102,26 @@ class MjInfer(MJInferBase):
 
     def key_callback(self, keycode):
         print(f"key: {keycode}")
+        
+        # --- [新增] M 鍵用來切換手動模式 ---
+        if keycode == 77:  # M key
+            self.manual_pose_mode = not self.manual_pose_mode
+            if self.manual_pose_mode:
+                print("\n" + "="*50)
+                print("      MANUAL POSING MODE ACTIVATED")
+                print("      AI control is PAUSED. You can now adjust joints.")
+                print("="*50 + "\n")
+            else:
+                print("\n" + "="*50)
+                print("      MANUAL POSING MODE DEACTIVATED")
+                print("      AI control is RESUMED.")
+                print("="*50 + "\n")
+            return
+        # ------------------------------------
+
         if keycode == 72:  # h
             self.head_control_mode = not self.head_control_mode
+            
         lin_vel_x = 0
         lin_vel_y = 0
         ang_vel = 0
@@ -118,9 +134,9 @@ class MjInfer(MJInferBase):
                 lin_vel_y = self.COMMANDS_RANGE_Y[1]
             if keycode == 262:  # arrow right
                 lin_vel_y = self.COMMANDS_RANGE_Y[0]
-            if keycode == 81:  # a
+            if keycode == 81:  # q key
                 ang_vel = self.COMMANDS_RANGE_THETA[1]
-            if keycode == 69:  # e
+            if keycode == 69:  # e key
                 ang_vel = self.COMMANDS_RANGE_THETA[0]
             if keycode == 80:  # p
                 self.phase_frequency_factor += 0.1
@@ -139,9 +155,9 @@ class MjInfer(MJInferBase):
                 head_yaw = self.HEAD_YAW_RANGE[1]
             if keycode == 262:  # arrow right
                 head_yaw = self.HEAD_YAW_RANGE[0]
-            if keycode == 81:  # a
+            if keycode == 81:  # q key
                 head_roll = self.HEAD_ROLL_RANGE[1]
-            if keycode == 69:  # e
+            if keycode == 69:  # e key
                 head_roll = self.HEAD_ROLL_RANGE[0]
 
             self.commands[3] = neck_pitch
@@ -158,77 +174,72 @@ class MjInfer(MJInferBase):
             with mujoco.viewer.launch_passive(
                 self.model,
                 self.data,
-                show_left_ui=False,
-                show_right_ui=False,
+                show_left_ui=True,  # <-- 確保左側 UI 開啟 (雖然新版在右側)
+                show_right_ui=True, # <-- 確保右側 UI 開啟
                 key_callback=self.key_callback,
             ) as viewer:
                 counter = 0
-                while True:
+                while viewer.is_running():
 
                     step_start = time.time()
 
                     mujoco.mj_step(self.model, self.data)
 
-                    counter += 1
-
-                    if counter % self.decimation == 0:
-                        if not self.standing:
-                            self.imitation_i += 1.0 * self.phase_frequency_factor
-                            self.imitation_i = (
-                                self.imitation_i % self.PRM.nb_steps_in_period
+                    # --- [修改] 只有在非手動模式下，才執行 AI 控制 ---
+                    if not self.manual_pose_mode:
+                        counter += 1
+                        if counter % self.decimation == 0:
+                            if not self.standing:
+                                self.imitation_i += 1.0 * self.phase_frequency_factor
+                                self.imitation_i = (
+                                    self.imitation_i % self.PRM.nb_steps_in_period
+                                )
+                                self.imitation_phase = np.array(
+                                    [
+                                        np.cos(
+                                            self.imitation_i
+                                            / self.PRM.nb_steps_in_period
+                                            * 2
+                                            * np.pi
+                                        ),
+                                        np.sin(
+                                            self.imitation_i
+                                            / self.PRM.nb_steps_in_period
+                                            * 2
+                                            * np.pi
+                                        ),
+                                    ]
+                                )
+                            obs = self.get_obs(
+                                self.data,
+                                self.commands,
                             )
-                            # print(self.PRM.nb_steps_in_period)
-                            # exit()
-                            self.imitation_phase = np.array(
-                                [
-                                    np.cos(
-                                        self.imitation_i
-                                        / self.PRM.nb_steps_in_period
-                                        * 2
-                                        * np.pi
-                                    ),
-                                    np.sin(
-                                        self.imitation_i
-                                        / self.PRM.nb_steps_in_period
-                                        * 2
-                                        * np.pi
-                                    ),
-                                ]
-                            )
-                        obs = self.get_obs(
-                            self.data,
-                            self.commands,
-                        )
-                        self.saved_obs.append(obs)
-                        action = self.policy.infer(obs)
+                            self.saved_obs.append(obs)
+                            action = self.policy.infer(obs)
 
-                        # self.action_filter.push(action)
-                        # action = self.action_filter.get_filtered_action()
+                            self.last_last_last_action = self.last_last_action.copy()
+                            self.last_last_action = self.last_action.copy()
+                            self.last_action = action.copy()
 
-                        self.last_last_last_action = self.last_last_action.copy()
-                        self.last_last_action = self.last_action.copy()
-                        self.last_action = action.copy()
-
-                        self.motor_targets = (
-                            self.default_actuator + action * self.action_scale
-                        )
-
-                        if USE_MOTOR_SPEED_LIMITS:
-                            self.motor_targets = np.clip(
-                                self.motor_targets,
-                                self.prev_motor_targets
-                                - self.max_motor_velocity
-                                * (self.sim_dt * self.decimation),
-                                self.prev_motor_targets
-                                + self.max_motor_velocity
-                                * (self.sim_dt * self.decimation),
+                            self.motor_targets = (
+                                self.default_actuator + action * self.action_scale
                             )
 
-                            self.prev_motor_targets = self.motor_targets.copy()
+                            if USE_MOTOR_SPEED_LIMITS:
+                                self.motor_targets = np.clip(
+                                    self.motor_targets,
+                                    self.prev_motor_targets
+                                    - self.max_motor_velocity
+                                    * (self.sim_dt * self.decimation),
+                                    self.prev_motor_targets
+                                    + self.max_motor_velocity
+                                    * (self.sim_dt * self.decimation),
+                                )
 
-                        # head_targets = self.commands[3:]
-                        # self.motor_targets[5:9] = head_targets
-                        self.data.ctrl = self.motor_targets.copy()
+                                self.prev_motor_targets = self.motor_targets.copy()
+
+                            self.data.ctrl = self.motor_targets.copy()
+                    # -----------------------------------------------
 
                     viewer.sync()
 
