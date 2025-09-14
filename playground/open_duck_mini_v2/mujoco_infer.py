@@ -103,7 +103,7 @@ class MjInfer(MJInferBase):
     def key_callback(self, keycode):
         print(f"key: {keycode}")
         
-        # --- [新增] M 鍵用來切換手動模式 ---
+        # --- [新增] M 鍵用來切換control手動模式 ---
         if keycode == 77:  # M key
             self.manual_pose_mode = not self.manual_pose_mode
             if self.manual_pose_mode:
@@ -119,45 +119,45 @@ class MjInfer(MJInferBase):
             return
         # ------------------------------------
 
-        if keycode == 72:  # h
+        if keycode == 72:  # h 來切換頭部模式
             self.head_control_mode = not self.head_control_mode
             
         lin_vel_x = 0
         lin_vel_y = 0
         ang_vel = 0
         if not self.head_control_mode:
-            if keycode == 265:  # arrow up
+            if keycode == 265:  # arrow up 前進
                 lin_vel_x = self.COMMANDS_RANGE_X[1]
-            if keycode == 264:  # arrow down
+            if keycode == 264:  # arrow down 後退
                 lin_vel_x = self.COMMANDS_RANGE_X[0]
-            if keycode == 263:  # arrow left
+            if keycode == 263:  # arrow left 左平移
                 lin_vel_y = self.COMMANDS_RANGE_Y[1]
-            if keycode == 262:  # arrow right
+            if keycode == 262:  # arrow right 右平移
                 lin_vel_y = self.COMMANDS_RANGE_Y[0]
-            if keycode == 81:  # q key
+            if keycode == 81:  # q key 左彎
                 ang_vel = self.COMMANDS_RANGE_THETA[1]
-            if keycode == 69:  # e key
+            if keycode == 69:  # e key 右彎
                 ang_vel = self.COMMANDS_RANGE_THETA[0]
-            if keycode == 80:  # p
+            if keycode == 80:  # p 增加跨步頻率
                 self.phase_frequency_factor += 0.1
-            if keycode == 59:  # m
+            if keycode == 59:  # m 減低跨步頻率
                 self.phase_frequency_factor -= 0.1
         else:
             neck_pitch = 0
             head_pitch = 0
             head_yaw = 0
             head_roll = 0
-            if keycode == 265:  # arrow up
+            if keycode == 265:  # arrow up 抬頭
                 head_pitch = self.NECK_PITCH_RANGE[1]
-            if keycode == 264:  # arrow down
+            if keycode == 264:  # arrow down 低頭
                 head_pitch = self.NECK_PITCH_RANGE[0]
-            if keycode == 263:  # arrow left
+            if keycode == 263:  # arrow left 左轉頭
                 head_yaw = self.HEAD_YAW_RANGE[1]
-            if keycode == 262:  # arrow right
+            if keycode == 262:  # arrow right 右轉頭
                 head_yaw = self.HEAD_YAW_RANGE[0]
-            if keycode == 81:  # q key
+            if keycode == 81:  # q key 左晃
                 head_roll = self.HEAD_ROLL_RANGE[1]
-            if keycode == 69:  # e key
+            if keycode == 69:  # e key 右晃
                 head_roll = self.HEAD_ROLL_RANGE[0]
 
             self.commands[3] = neck_pitch
