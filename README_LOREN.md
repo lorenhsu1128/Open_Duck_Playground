@@ -1023,3 +1023,61 @@ uv run playground/open_duck_mini_v2/mujoco_infer.py \
 對於您目前的機器人控制任務，`(256, 128, 64)` 這個結構以及它所產生的 864KB 模型，是一個非常合理且優秀的起點。
 
 **我的建議是：** 在您發現目前的模型尺寸確實無法學習您想要的複雜行為之前，**請優先專注於調整我們之前討論過的「獎勵函數」和「目標姿態」**。優化訓練方法，遠比盲目地增大模型尺寸更為重要且有效。一個好的獎勵函數，可以讓一個小模型發揮出驚人的效果。
+
+
+### 怎麼使用 使用 ref_motion_viewer.py 來視覺化 polynomial_coefficients.pkl 產生的參考動作
+好的，這份 `ref_motion_viewer.py` 程式碼可以讓您在 MuJoCo 模擬環境中，載入並視覺化 `polynomial_coefficients.pkl` 檔案所定義的參考動作（Reference Motion）。
+
+以下是使用這個腳本的步驟和說明：
+
+### 1\. 準備工作
+
+請確認您已經安裝好所有必要的 Python 套件，特別是 `mujoco` 和 `pygame`（如果您想用搖桿控制）。
+
+### 2\. 執行腳本
+
+您需要在您的專案根目錄（`Open_Duck_Playground/`）下打開終端機 (Terminal)，然後執行以下指令：
+
+```bash
+python playground/open_duck_mini_v2/ref_motion_viewer.py --reference_data playground/open_duck_mini_v2/data/polynomial_coefficients.pkl
+```
+
+**指令詳解：**
+
+  * `uv run playground/open_duck_mini_v2/ref_motion_viewer.py`: 這是執行的 Python 腳本檔案路徑。
+  * `--reference_data playground/open_duck_mini_v2/data/polynomial_coefficients.pkl`: 這是最重要的參數。它告訴腳本要去哪裡讀取參考動作的資料。您必須將路徑指向 `open_duck_mini_v2` 資料夾內的 `polynomial_coefficients.pkl` 檔案。
+
+執行後，您會看到一個 MuJoCo 的模擬視窗彈出，裡面有您的 Open Duck Mini V2 機器人。
+
+### 3\. 如何在模擬器中互動
+
+腳本啟動後，機器人會先呈現預設的站立姿勢。您可以透過鍵盤或搖桿來下指令，讓機器人做出不同的動作。
+
+#### **鍵盤控制**\*\*:\*\*
+
+  * **向上箭頭 (↑)**: 向前移動 (增加 `dx` 速度)。
+  * **向下箭頭 (↓)**: 向後移動 (減少 `dx` 速度)。
+  * **向左箭頭 (←)**: 向左平移 (增加 `dy` 速度)。
+  * **向右箭頭 (→)**: 向右平移 (減少 `dy` 速度)。
+  * **'Q' 鍵**: 向左旋轉 (增加 `dtheta` 角速度)。
+  * **'E' 鍵**: 向右旋轉 (減少 `dtheta` 角速度)。
+
+當您按下這些按鍵時，終端機中會印出目前的指令數值，例如 `command: [0.15, 0.0, 0.0]`，同時模擬器中的機器人會開始執行對應的動作。
+
+#### **搖桿控制 (Joystick)\*\*\*\*:**
+
+如果您有連接搖桿，可以在執行指令時加上 `--joystick` 參數：
+
+```bash
+uv run playground/open_duck_mini_v2/ref_motion_viewer.py --reference_data playground/open_duck_mini_v2/data/polynomial_coefficients.pkl --joystick
+```
+
+  * **左搖桿的上下**: 控制前後移動。
+  * **左搖桿的左右**: 控制左右平移。
+  * **右搖桿的左右 (如果偵測到第二支搖桿)**: 控制旋轉。
+
+### 4\. 觀察動作對稱性
+
+透過這個視覺化工具，您可以直接觀察機器人**在靜止站立 (`command` 為 `[0, 0, 0]`)** 以及**在不同方向移動時**，左右腿的動作是否對稱。
+
+如果 `polynomial_coefficients.pkl` 內的參考動作資料本身就不對稱，您會在這個模擬器中清楚地看到機器人出現歪斜或不協調的步態。這將能幫助您判斷問題是出在參考動作資料，還是如我們先前所討論的，出在獎勵函數的設計上。
