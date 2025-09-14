@@ -276,3 +276,22 @@ def reward_head_roll_zero(head_roll_angle: float) -> float:
   """Penalizes the head_roll angle for not being zero."""
   # 角度離 0 越遠，懲罰就越高
   return -jp.square(head_roll_angle)
+
+# 走路時，頭部儘量為0度的獎勵
+def reward_head_orientation_walking(
+    head_roll_angle: float,
+    head_yaw_angle: float,
+    forward_velocity: float,
+    velocity_threshold: float = 0.05,
+) -> float:
+  """
+  Penalizes non-zero head roll and yaw only when the robot is walking forward.
+  """
+  # 計算頭部姿態的懲罰值 (角度離 0 越遠，懲罰越高)
+  orientation_penalty = -jp.square(head_roll_angle) - jp.square(head_yaw_angle)
+
+  # 判斷是否正在走路 (往前速度 > 閾值)
+  is_walking = forward_velocity > velocity_threshold
+
+  # 只有在走路時才啟用懲罰，否則獎勵為 0
+  return jp.where(is_walking, orientation_penalty, 0.0)

@@ -40,7 +40,8 @@ from playground.common.rewards import (
     reward_alive,
     # cost_legs_asymmetry,  # <-- 左右腳對稱站立成本
     reward_symmetry,  # <-- 左右腳對稱站立獎勵
-    reward_head_roll_zero,
+    # reward_head_roll_zero,
+    reward_head_orientation_walking,
 )
 from playground.open_duck_mini_v2.custom_rewards import reward_imitation
 
@@ -91,7 +92,8 @@ def default_config() -> config_dict.ConfigDict:
                 imitation=1.5,
                 symmetry=2.5, # 雙腳平行就加分，有效果，可以修正雙腳站立時不正的狀況
                 # legs_asymmetry=-1.5,  # <-- 雙腳不平行就扣分 第一次-0.5無效果
-                head_roll_zero=4.0, #頭部roll維持0度的獎勵
+                # head_roll_zero=4.0, #頭部roll維持0度的獎勵
+                head_orientation_walking=4.0, #走路時頭部儘量不動的獎勵
             ),
             tracking_sigma=0.01,  # was working at 0.01
         ),
@@ -723,8 +725,8 @@ class Joystick(open_duck_mini_v2_base.OpenDuckMiniV2Env):
         head_roll_command = info["command"][6]
 
 
-        # 移除 jp.where 條件，讓獎勵永遠處於啟動狀態
-        head_roll_zero_reward = reward_head_roll_zero(head_roll_angle),
+        # head_roll的獎勵計算
+        # head_roll_zero_reward = reward_head_roll_zero(head_roll_angle),
 
         # # 只有當 head_roll 的指令為 0 時(無頭部控制模式)，才計算「保持為零」的獎勵
         # # 否則，獎勵值為 0，不產生任何影響
@@ -733,6 +735,10 @@ class Joystick(open_duck_mini_v2_base.OpenDuckMiniV2Env):
         #     reward_head_roll_zero(head_roll_angle),
         #     0.0
         # )
+
+        head_yaw_angle = qpos[7]   # 根據 actuator 順序，head_yaw 索引為 7
+        head_roll_angle = qpos[8]  # 根據 actuator 順序，head_roll 索引為 8
+        forward_velocity = self.get_local_linvel(data)[0] # 取得 x 軸(前進)速度
 
         ret = {
             "tracking_lin_vel": reward_tracking_lin_vel(
@@ -777,8 +783,16 @@ class Joystick(open_duck_mini_v2_base.OpenDuckMiniV2Env):
             # ),
             # 新增雙腳平行獎勵
             "symmetry": reward_symmetry(left_qpos, right_qpos),
+            
             # 新增head_roll角度回正獎勵
-            "head_roll_zero": head_roll_zero_reward,
+            # "head_roll_zero": head_roll_zero_reward,
+
+            # 新增走路時，頭部角度回正獎勵
+            "head_orientation_walking": reward_head_orientation_walking(
+                head_roll_angle=head_roll_angle,
+                head_yaw_angle=head_yaw_angle,
+                forward_velocity=forward_velocity,
+            ),
         }
 
         return ret
@@ -825,7 +839,7 @@ class Joystick(open_duck_mini_v2_base.OpenDuckMiniV2Env):
 
         # 嘗試強制為0
         head_roll = 0.0
-        # head_yaw = 0.0
+        head_yaw = 0.0
 
         # # 有 50% 的機率進入「無頭部控制模式」
         # no_head_control_mode = jax.random.bernoulli(rng9, p=0.5)
