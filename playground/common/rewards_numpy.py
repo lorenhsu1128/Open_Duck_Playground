@@ -194,3 +194,17 @@ def reward_feet_phase(foot_pos, rz):
     # cmd_norm = np.linalg.norm(commands)
     # reward *= cmd_norm > 0.1  # No reward for zero commands.
     return np.nan_to_num(reward)
+
+# 新增雙腳不平行成本項，希望讓左右 leg_hip_pitch 儘量對稱
+def cost_legs_asymmetry(joints_qpos, left_hip_pitch_idx, right_hip_pitch_idx, left_knee_idx, right_knee_idx):
+    """Calculates the asymmetry cost between the left and right leg joints."""
+    
+    # Hip pitch joints should be opposite to each other, so their sum should be close to 0.
+    hip_pitch_asymmetry = np.square(joints_qpos[left_hip_pitch_idx] + joints_qpos[right_hip_pitch_idx])
+    
+    # Knee joints should be roughly equal, so their difference should be close to 0.
+    knee_asymmetry = np.square(joints_qpos[left_knee_idx] - joints_qpos[right_knee_idx])
+    
+    # You can also add other joints like hip_roll, hip_yaw, ankle if needed.
+    
+    return np.nan_to_num(hip_pitch_asymmetry + knee_asymmetry)

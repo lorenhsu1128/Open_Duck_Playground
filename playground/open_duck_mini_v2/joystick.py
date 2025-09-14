@@ -38,6 +38,9 @@ from playground.common.rewards import (
     cost_action_rate,
     cost_stand_still,
     reward_alive,
+    # cost_legs_asymmetry,  # <-- 左右腳對稱站立成本
+    reward_symmetry,  # <-- 左右腳對稱站立獎勵
+    reward_head_roll_zero,
 )
 from playground.open_duck_mini_v2.custom_rewards import reward_imitation
 
@@ -85,7 +88,10 @@ def default_config() -> config_dict.ConfigDict:
                 action_rate=-0.5,  # was -1.5
                 stand_still=-0.2,  # was -1.0 TODO try to relax this a bit ?
                 alive=20.0,
-                imitation=1.0,
+                imitation=1.5,
+                symmetry=2.5, # 雙腳平行就加分，有效果，可以修正雙腳站立時不正的狀況
+                # legs_asymmetry=-1.5,  # <-- 雙腳不平行就扣分 第一次-0.5無效果
+                head_roll_zero=4.0, #頭部roll維持0度的獎勵
             ),
             tracking_sigma=0.01,  # was working at 0.01
         ),
@@ -100,7 +106,7 @@ def default_config() -> config_dict.ConfigDict:
         neck_pitch_range=[-0.34, 1.1],
         head_pitch_range=[-0.78, 0.78],
         head_yaw_range=[-1.5, 1.5],
-        head_roll_range=[-0.5, 0.5],
+        head_roll_range=[-0.5, 0.5],  #原本數值-0.5, 0.5
         head_range_factor=1.0,  # to make it easier
     )
 
@@ -159,6 +165,12 @@ class Joystick(open_duck_mini_v2_base.OpenDuckMiniV2Env):
                 1.0,  # right leg.
             ]
         )
+
+        # 新增以下程式碼來獲取關節索引
+        self._left_hip_pitch_idx = constants.JOINTS_ORDER_NO_HEAD.index('left_hip_pitch')
+        self._right_hip_pitch_idx = constants.JOINTS_ORDER_NO_HEAD.index('right_hip_pitch')
+        self._left_knee_idx = constants.JOINTS_ORDER_NO_HEAD.index('left_knee')
+        self._right_knee_idx = constants.JOINTS_ORDER_NO_HEAD.index('right_knee')
 
         self._njoints = self._mj_model.njnt  # number of joints
         self._actuators = self._mj_model.nu  # number of actuators
@@ -486,11 +498,21 @@ class Joystick(open_duck_mini_v2_base.OpenDuckMiniV2Env):
         rewards = self._get_reward(
             data, action, state.info, state.metrics, done, first_contact, contact
         )
-        # FIXME
-        rewards = {
-            k: v * self._config.reward_config.scales[k] for k, v in rewards.items()
-        }
-        reward = jp.clip(sum(rewards.values()) * self.dt, 0.0, 10000.0)
+        
+        # # FIXME
+        # rewards = {
+        #     k: v * self._config.reward_config.scales[k] for k, v in rewards.items()
+        # }
+        # reward = jp.clip(sum(rewards.values()) * self.dt, 0.0, 10000.0)
+
+        # 請將其修改為:
+        scaled_rewards = {}
+        for k, v in rewards.items():
+            # 在 jp.sum 外層加上 jp.asarray()，強制將 v 轉換為 JAX array
+            scaled_rewards[k] = jp.sum(jp.asarray(v)) * self._config.reward_config.scales[k]
+        reward = jp.clip(sum(scaled_rewards.values()) * self.dt, 0.0, 10000.0)
+
+
         # jax.debug.print('STEP REWARD: {}',reward)
         state.info["push"] = push
         state.info["step"] += 1
@@ -513,13 +535,24 @@ class Joystick(open_duck_mini_v2_base.OpenDuckMiniV2Env):
         state.info["feet_air_time"] *= ~contact
         state.info["last_contact"] = contact
         state.info["swing_peak"] *= ~contact
+        # for k, v in rewards.items():
+        #     rew_scale = self._config.reward_config.scales[k]
+        #     if rew_scale != 0:
+        #         if rew_scale > 0:
+        #             state.metrics[f"reward/{k}"] = v
+        #         else:
+        #             state.metrics[f"cost/{k}"] = -v
+        # 請將其修改為:
         for k, v in rewards.items():
             rew_scale = self._config.reward_config.scales[k]
+            # 先用 asarray 和 sum 確保獎勵值是一個純數值
+            summed_v = jp.sum(jp.asarray(v))
             if rew_scale != 0:
                 if rew_scale > 0:
-                    state.metrics[f"reward/{k}"] = v
+                    state.metrics[f"reward/{k}"] = summed_v
                 else:
-                    state.metrics[f"cost/{k}"] = -v
+                    state.metrics[f"cost/{k}"] = -summed_v
+
         state.metrics["swing_peak"] = jp.mean(state.info["swing_peak"])
 
         done = done.astype(reward.dtype)
@@ -677,6 +710,30 @@ class Joystick(open_duck_mini_v2_base.OpenDuckMiniV2Env):
     ) -> dict[str, jax.Array]:
         del metrics  # Unused.
 
+        # 取得所有關節
+        qpos = self.get_actuator_joints_qpos(data.qpos)
+
+        # 左右腳數值
+        left_qpos = qpos[:5]  # Assuming first 5 are left side
+        right_qpos = qpos[9:14] # Assuming next 5 are right side
+
+        # 頭部roll
+        head_roll_angle = qpos[8] # 取得 head_roll 的角度 (索引為 8)
+        # 取得 head_roll 的指令 (在 command 陣列中的索引為 6)
+        head_roll_command = info["command"][6]
+
+
+        # 移除 jp.where 條件，讓獎勵永遠處於啟動狀態
+        head_roll_zero_reward = reward_head_roll_zero(head_roll_angle),
+
+        # # 只有當 head_roll 的指令為 0 時(無頭部控制模式)，才計算「保持為零」的獎勵
+        # # 否則，獎勵值為 0，不產生任何影響
+        # head_roll_zero_reward = jp.where(
+        #     head_roll_command == 0.0,
+        #     reward_head_roll_zero(head_roll_angle),
+        #     0.0
+        # )
+
         ret = {
             "tracking_lin_vel": reward_tracking_lin_vel(
                 info["command"],
@@ -710,12 +767,25 @@ class Joystick(open_duck_mini_v2_base.OpenDuckMiniV2Env):
                 self._default_actuator,
                 ignore_head=False,
             ),
+            # 新增雙腳不平行成本項
+            # "legs_asymmetry": cost_legs_asymmetry(
+            #     self.get_actuator_joints_qpos(data.qpos),
+            #     self._left_hip_pitch_idx,
+            #     self._right_hip_pitch_idx,
+            #     self._left_knee_idx,
+            #     self._right_knee_idx,
+            # ),
+            # 新增雙腳平行獎勵
+            "symmetry": reward_symmetry(left_qpos, right_qpos),
+            # 新增head_roll角度回正獎勵
+            "head_roll_zero": head_roll_zero_reward,
         }
 
         return ret
 
     def sample_command(self, rng: jax.Array) -> jax.Array:
-        rng1, rng2, rng3, rng4, rng5, rng6, rng7, rng8 = jax.random.split(rng, 8)
+        rng1, rng2, rng3, rng4, rng5, rng6, rng7, rng8 = jax.random.split(rng, 8) # 新增rng9給 無頭部控制模式
+        # rng1, rng2, rng3, rng4, rng5, rng6, rng7, rng8, rng9 = jax.random.split(rng, 9) # 新增rng9給 無頭部控制模式
 
         lin_vel_x = jax.random.uniform(
             rng1, minval=self._config.lin_vel_x[0], maxval=self._config.lin_vel_x[1]
@@ -752,6 +822,19 @@ class Joystick(open_duck_mini_v2_base.OpenDuckMiniV2Env):
             minval=self._config.head_roll_range[0] * self._config.head_range_factor,
             maxval=self._config.head_roll_range[1] * self._config.head_range_factor,
         )
+
+        # 嘗試強制為0
+        head_roll = 0.0
+        # head_yaw = 0.0
+
+        # # 有 50% 的機率進入「無頭部控制模式」
+        # no_head_control_mode = jax.random.bernoulli(rng9, p=0.5)
+
+        # # 如果進入該模式，就將所有頭部指令覆寫為 0
+        # # neck_pitch = jp.where(no_head_control_mode, 0.0, neck_pitch)
+        # # head_pitch = jp.where(no_head_control_mode, 0.0, head_pitch)
+        # head_yaw = jp.where(no_head_control_mode, 0.0, head_yaw)
+        # head_roll = jp.where(no_head_control_mode, 0.0, head_roll)
 
         # With 10% chance, set everything to zero.
         return jp.where(

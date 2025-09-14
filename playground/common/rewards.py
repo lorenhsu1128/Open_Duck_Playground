@@ -253,3 +253,26 @@ def reward_feet_phase(
     # cmd_norm = jp.linalg.norm(commands)
     # reward *= cmd_norm > 0.1  # No reward for zero commands.
     return jp.nan_to_num(reward)
+
+# 新增雙腳不平行成本項，希望讓左右 leg_hip_pitch 儘量對稱
+# def cost_legs_asymmetry(joints_qpos, left_hip_pitch_idx, right_hip_pitch_idx, left_knee_idx, right_knee_idx):
+#     """Calculates the asymmetry cost between the left and right leg joints using JAX."""
+
+#     # Hip pitch joints should be opposite, so their sum should be close to 0.
+#     hip_pitch_asymmetry = jp.square(joints_qpos[left_hip_pitch_idx] + joints_qpos[right_hip_pitch_idx])
+
+#     # Knee joints should be equal, so their difference should be close to 0.
+#     knee_asymmetry = jp.square(joints_qpos[left_knee_idx] - joints_qpos[right_knee_idx])
+
+#     return jp.nan_to_num(hip_pitch_asymmetry + knee_asymmetry)
+
+# 新增雙腳平行獎勵項，希望讓左右腳儘量對稱
+def reward_symmetry(qpos_left, qpos_right):
+    """Penalizes asymmetry between left and right joint positions."""
+    return -jp.sum(jp.square(qpos_left - qpos_right))
+
+# 計算 head_roll 角度的平方，並回傳一個負值。角度越偏離 0，數值就越小，獎勵就越低。
+def reward_head_roll_zero(head_roll_angle: float) -> float:
+  """Penalizes the head_roll angle for not being zero."""
+  # 角度離 0 越遠，懲罰就越高
+  return -jp.square(head_roll_angle)
