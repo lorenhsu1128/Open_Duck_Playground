@@ -160,6 +160,14 @@ class MjInfer(MJInferBase):
             if keycode == 69:  # e key 右晃
                 head_roll = self.HEAD_ROLL_RANGE[0]
 
+            # 按下s重置頭部角度
+            if keycode == 83:  # S key
+                print("Head pose reset.")
+                neck_pitch = 0.0
+                head_pitch = 0.0
+                head_yaw = 0.0
+                head_roll = 0.0
+
             self.commands[3] = neck_pitch
             self.commands[4] = head_pitch
             self.commands[5] = head_yaw
@@ -216,6 +224,30 @@ class MjInfer(MJInferBase):
                             )
                             self.saved_obs.append(obs)
                             action = self.policy.infer(obs)
+
+                            # 當進入 H 模式時，頭部改為純手控
+                            if self.head_control_mode:
+                                # 當頭部手動控制模式開啟時，我們用 commands 的值
+                                # 來強制覆寫 AI 輸出的 action 中對應頭部的部分。
+                                
+                                # 根據您檔案中 actuator 的順序，頭部關節在 action 陣列中的索引是:
+                                # neck_pitch: 5
+                                # head_pitch: 6
+                                # head_yaw:   7
+                                # head_roll:  8
+                                
+                                # 根據您檔案中 key_callback 的邏輯，手動指令在 commands 陣列中的索引是:
+                                # (unused) neck_pitch: 3 
+                                # head_pitch: 4
+                                # head_yaw:   5
+                                # head_roll:  6
+                                
+
+                                # 執行覆寫
+                                action[5] = self.commands[4]  # neck_pitch 使用 head_pitch 的指令
+                                action[6] = self.commands[4]  # head_pitch
+                                action[7] = self.commands[5]  # head_yaw
+                                action[8] = self.commands[6]  # head_roll
 
                             self.last_last_last_action = self.last_last_action.copy()
                             self.last_last_action = self.last_action.copy()
