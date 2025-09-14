@@ -41,7 +41,8 @@ from playground.common.rewards import (
     # cost_legs_asymmetry,  # <-- 左右腳對稱站立成本
     reward_symmetry,  # <-- 左右腳對稱站立獎勵
     # reward_head_roll_zero,
-    reward_head_orientation_walking,
+    # reward_head_orientation_walking,
+    reward_head_straight_standing,
 )
 from playground.open_duck_mini_v2.custom_rewards import reward_imitation
 
@@ -89,11 +90,12 @@ def default_config() -> config_dict.ConfigDict:
                 action_rate=-0.5,  # was -1.5
                 stand_still=-0.2,  # was -1.0 TODO try to relax this a bit ?
                 alive=20.0,
-                imitation=1.5,
-                symmetry=2.5, # 雙腳平行就加分，有效果，可以修正雙腳站立時不正的狀況
+                imitation=2.0, # 1.5
+                symmetry=4.0, # 雙腳平行就加分，有效果，可以修正雙腳站立時不正的狀況 5.0站姿歪斜
                 # legs_asymmetry=-1.5,  # <-- 雙腳不平行就扣分 第一次-0.5無效果
                 # head_roll_zero=4.0, #頭部roll維持0度的獎勵
-                head_orientation_walking=4.0, #走路時頭部儘量不動的獎勵
+                # head_orientation_walking=4.0, #走路時頭部儘量不動的獎勵
+                head_straight_standing=5.0, #站立時頭部回正的獎勵 
             ),
             tracking_sigma=0.01,  # was working at 0.01
         ),
@@ -740,6 +742,10 @@ class Joystick(open_duck_mini_v2_base.OpenDuckMiniV2Env):
         head_roll_angle = qpos[8]  # 根據 actuator 順序，head_roll 索引為 8
         forward_velocity = self.get_local_linvel(data)[0] # 取得 x 軸(前進)速度
 
+        # 獲取當前的速度指令
+        lin_vel_command = info["command"][0:2] # 線速度指令 (x, y)
+        ang_vel_command = info["command"][2]   # 角速度指令 (yaw)
+
         ret = {
             "tracking_lin_vel": reward_tracking_lin_vel(
                 info["command"],
@@ -788,10 +794,18 @@ class Joystick(open_duck_mini_v2_base.OpenDuckMiniV2Env):
             # "head_roll_zero": head_roll_zero_reward,
 
             # 新增走路時，頭部角度回正獎勵
-            "head_orientation_walking": reward_head_orientation_walking(
-                head_roll_angle=head_roll_angle,
+            # "head_orientation_walking": reward_head_orientation_walking(
+            #     head_roll_angle=head_roll_angle,
+            #     head_yaw_angle=head_yaw_angle,
+            #     forward_velocity=forward_velocity,
+            # ),
+
+            # 新增站立時，頭部角度回正獎勵
+            "head_straight_standing": reward_head_straight_standing(
                 head_yaw_angle=head_yaw_angle,
-                forward_velocity=forward_velocity,
+                head_roll_angle=head_roll_angle,
+                lin_vel_command=lin_vel_command,
+                ang_vel_command=ang_vel_command,
             ),
         }
 
@@ -838,8 +852,8 @@ class Joystick(open_duck_mini_v2_base.OpenDuckMiniV2Env):
         )
 
         # 嘗試強制為0
-        head_roll = 0.0
-        head_yaw = 0.0
+        # head_roll = 0.0
+        # head_yaw = 0.0
 
         # # 有 50% 的機率進入「無頭部控制模式」
         # no_head_control_mode = jax.random.bernoulli(rng9, p=0.5)
@@ -852,7 +866,7 @@ class Joystick(open_duck_mini_v2_base.OpenDuckMiniV2Env):
 
         # With 10% chance, set everything to zero.
         return jp.where(
-            jax.random.bernoulli(rng4, p=0.1),
+            jax.random.bernoulli(rng4, p=0.3),
             jp.zeros(7),
             jp.hstack(
                 [

@@ -295,3 +295,25 @@ def reward_head_orientation_walking(
 
   # 只有在走路時才啟用懲罰，否則獎勵為 0
   return jp.where(is_walking, orientation_penalty, 0.0)
+
+# 只有當機器人被命令站立不動時，才去懲罰沒有回正的 head_yaw 和 head_roll
+def reward_head_straight_standing(
+    head_yaw_angle: float,
+    head_roll_angle: float,
+    lin_vel_command: jax.Array, # 傳入線速度指令 (x, y)
+    ang_vel_command: float,     # 傳入角速度指令 (yaw)
+    standing_threshold: float = 0.01,
+) -> float:
+  """
+  Penalizes non-zero head yaw and roll ONLY when the robot is commanded to stand still.
+  """
+  # 計算頭部姿態的懲罰值
+  orientation_penalty = -jp.square(head_yaw_angle) - jp.square(head_roll_angle)
+
+  # 判斷指令是否為「站立不動」
+  # 檢查線速度和角速度指令是否都趨近於零
+  is_standing_command = (jp.sum(jp.abs(lin_vel_command)) < standing_threshold) & \
+                        (jp.abs(ang_vel_command) < standing_threshold)
+
+  # 只有在站立指令下才啟用懲罰，否則獎勵為 0
+  return jp.where(is_standing_command, orientation_penalty, 0.0)
