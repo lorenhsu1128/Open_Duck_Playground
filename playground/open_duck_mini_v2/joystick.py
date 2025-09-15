@@ -91,11 +91,11 @@ def default_config() -> config_dict.ConfigDict:
                 stand_still=-0.2,  # was -1.0 TODO try to relax this a bit ?
                 alive=20.0,
                 imitation=2.0, # 1.5
-                symmetry=4.0, # 雙腳平行就加分，有效果，可以修正雙腳站立時不正的狀況 5.0站姿歪斜
+                symmetry=4.5, # 雙腳平行就加分，有效果，可以修正雙腳站立時不正的狀況 5.0站姿歪斜
                 # legs_asymmetry=-1.5,  # <-- 雙腳不平行就扣分 第一次-0.5無效果
                 # head_roll_zero=4.0, #頭部roll維持0度的獎勵
                 # head_orientation_walking=4.0, #走路時頭部儘量不動的獎勵
-                head_straight_standing=5.0, #站立時頭部回正的獎勵 
+                head_straight_standing=4.0, #站立時頭部回正的獎勵 
             ),
             tracking_sigma=0.01,  # was working at 0.01
         ),
