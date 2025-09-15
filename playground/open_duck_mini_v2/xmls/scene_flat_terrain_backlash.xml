@@ -77,3 +77,51 @@
           "/>
     </keyframe>
 </mujoco>
+<!-- <key name="home"
+            qpos="
+        0 0 0.15 身體軀幹的初始 (x, y, z) 座標
+        1 0 0 0 身體軀幹的初始姿態，以四元數 (w, x, y, z) 表示。1 0 0 0 代表沒有任何旋轉。
+
+        0.002	left_hip_yaw	左髖關節的平轉 (Yaw)
+        0	left_hip_yaw_backlash	對應的背隙關節
+        0.053	left_hip_roll	左髖關節的側傾 (Roll)
+        0	left_hip_roll_backlash	對應的背隙關節
+        -0.63	left_hip_pitch	左髖關節的前後擺動 (Pitch)，負值代表向後
+        0	left_hip_pitch_backlash	對應的背隙關節
+        1.368	left_knee	左膝關節彎曲
+        0	left_knee_backlash	對應的背隙關節
+        -0.784	left_ankle	左腳踝關節彎曲
+        0	left_ankle_backlash	對應的背隙關節
+
+        0	neck_pitch	頸部的前後擺動 (Pitch)
+        0	head_pitch	頭部的前後擺動 (Pitch)
+        0	head_yaw	頭部的平轉 (Yaw)
+        0	head_roll	頭部的側傾 (Roll)
+
+        -0.003	right_hip_yaw	右髖關節的平轉 (Yaw)
+        0	right_hip_yaw_backlash	對應的背隙關節
+        -0.065	right_hip_roll	右髖關節的側傾 (Roll)
+        0	right_hip_roll_backlash	對應的背隙關節
+        0.635	right_hip_pitch	右髖關節的前後擺動 (Pitch)，正值代表向前
+        0	right_hip_pitch_backlash	對應的背隙關節
+        1.379	right_knee	右膝關節彎曲
+        0	right_knee_backlash	對應的背隙關節
+        -0.796	right_ankle	右腳踝關節彎曲
+        0	right_ankle_backlash	對應的背隙關節
+"
+            ctrl="
+          0.002
+        0.053
+        -0.63
+        1.368
+        -0.784
+        0
+        0
+        0
+        0
+        -0.003
+        -0.065
+        0.635
+        1.379
+        -0.796
+          "/> -->
