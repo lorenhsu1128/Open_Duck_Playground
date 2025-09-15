@@ -1039,7 +1039,7 @@ uv run playground/open_duck_mini_v2/mujoco_infer.py \
 您需要在您的專案根目錄（`Open_Duck_Playground/`）下打開終端機 (Terminal)，然後執行以下指令：
 
 ```bash
-python playground/open_duck_mini_v2/ref_motion_viewer.py --reference_data playground/open_duck_mini_v2/data/polynomial_coefficients.pkl
+uv run playground/open_duck_mini_v2/ref_motion_viewer.py --reference_data playground/open_duck_mini_v2/data/polynomial_coefficients.pkl
 ```
 
 **指令詳解：**
@@ -1081,3 +1081,118 @@ uv run playground/open_duck_mini_v2/ref_motion_viewer.py --reference_data playgr
 透過這個視覺化工具，您可以直接觀察機器人**在靜止站立 (`command` 為 `[0, 0, 0]`)** 以及**在不同方向移動時**，左右腿的動作是否對稱。
 
 如果 `polynomial_coefficients.pkl` 內的參考動作資料本身就不對稱，您會在這個模擬器中清楚地看到機器人出現歪斜或不協調的步態。這將能幫助您判斷問題是出在參考動作資料，還是如我們先前所討論的，出在獎勵函數的設計上。
+
+
+
+
+
+好的，這沒有問題。我已經詳細分析了您提供的 `mujoco_infer.py` 檔案中的 `key_callback` 函式，為您整理出模擬器中所有按鍵的功能配置。
+
+模擬器的控制主要分為三種模式：**身體控制模式**、**頭部控制模式**和**手動姿態調整模式**。
+
+---
+
+### **通用模式切換**
+
+| 按鍵 | 功能 | 說明 |
+| :--- | :--- | :--- |
+| **H** | 切換「身體控制」/「頭部控制」模式 | 這是最主要的切換鍵。按下後會在兩種模式之間循環切換。 |
+| **M** | 切換「AI 控制」/「手動姿態調整」模式 | 按下後會暫停 AI 的所有動作，讓您可以進入 MuJoCo 的 UI 介面手動拖動關節。再次按下則恢復 AI 控制。 |
+
+---
+
+### **1. 身體控制模式 (預設模式)**
+
+這個模式用來控制機器人的移動。當 `head_control_mode` 為 `False` 時啟用。
+
+| 按鍵 | 功能 |
+| :--- | :--- |
+| **W** | 前進 |
+| **S** | 後退 |
+| **A** | 向左平移 |
+| **D** | 向右平移 |
+| **Q** | 向左旋轉 |
+| **E** | 向右旋轉 |
+
+---
+
+### **2. 頭部控制模式**
+
+這個模式用來控制機器人的頭部姿態。當 `head_control_mode` 為 `True` 時啟用。
+
+| 按鍵 | 功能 | 控制的關節 |
+| :--- | :--- | :--- |
+| **I** (方向鍵上) | 頭部向上看 | `neck_pitch`, `head_pitch` |
+| **K** (方向鍵下) | 頭部向下看 | `neck_pitch`, `head_pitch` |
+| **J** (方向鍵左) | 頭部向左轉 | `head_yaw` |
+| **L** (方向鍵右) | 頭部向右轉 | `head_yaw` |
+| **U** | 頭部向左側傾 (Roll) | `head_roll` |
+| **O** | 頭部向右側傾 (Roll) | `head_roll` |
+
+---
+
+### **3. 步態頻率調整 (僅在身體控制模式下)**
+
+這組按鍵用來微調機器人走路時的步態節奏，但它只在**非站立模式** (`standing` 為 `False`) 下才有效。
+
+| 按鍵 | 功能 | 說明 |
+| :--- | :--- | :--- |
+| **P** | 增加步態頻率 | 讓機器人走路的步伐變快。 |
+| **;** (分號) | 減少步態頻率 | 讓機器人走路的步伐變慢。 |
+
+希望這份完整的按鍵配置表能幫助您更順利地操作模擬器！
+
+
+### 長時間訓練後記憶體耗盡，錯誤訊息 Allocator (GPU_0_bfc) ran out of memory trying to allocate 512.0KiB
+
+你好，這個錯誤日誌非常清楚，問題的根源不在我們修改的獎勵邏輯，而是一個更底層的硬體資源問題：**您的 GPU 記憶體 (VRAM) 在長時間訓練後耗盡了**。
+
+這是一個在進行大規模 AI 訓練時很常見的問題，特別是在長時間運行後。讓我為您詳細解釋一下發生的原因以及解決方法。
+
+### 錯誤分析：為何會記憶體耗盡？ 🧠
+
+從您的日誌中可以看到，訓練本身是順利開始的。錯誤發生在訓練進行到 `step: 10813440` 時，程式嘗試儲存檢查點並**匯出 ONNX 模型**的環節。
+
+1.  **主要訓練程序**：您的訓練 (`runner.py`) 主要使用 JAX 函式庫，它會佔用一部分 GPU 記憶體來儲存模型參數和計算梯度。
+2.  **ONNX 匯出程序**：當需要匯出模型時，程式會呼叫 `export_onnx.py`。這個檔案使用了 **TensorFlow/Keras** 函式庫來建立一個網路結構並載入 JAX 的權重，然後再將其轉換為 ONNX 格式。
+3.  **資源衝突**：問題就在於，TensorFlow 在啟動時，會試圖向 GPU 申請一大塊記憶體。在訓練剛開始時，記憶體還很充裕；但經過長時間訓練後，JAX 使用的記憶體可能產生了碎片，或者總量已經很高，導致 TensorFlow 無法申請到它需要的記憶體，最終引發了 `RESOURCE_EXHAUSTED` 錯誤。
+
+錯誤訊息 `Allocator (GPU_0_bfc) ran out of memory trying to allocate 512.0KiB` 就明確指出了這一點。
+
+-----
+
+### 解決方案
+
+要解決這個問題，我們需要從「減少記憶體使用」或「優化記憶體管理」的角度著手。以下提供建議的解決方案，您可以從第一種開始嘗試。
+
+#### **方案一：嘗試 TensorFlow 的實驗性記憶體配置器**
+
+錯誤日誌本身提供了一個建議：`maybe the environment variable 'TF_GPU_ALLOCATOR=cuda_malloc_async' will improve the situation`。這個設定可以讓 TensorFlow 的記憶體管理更有彈性，有時可以避免因碎片化導致的問題。
+
+您可以在執行訓練指令前，先在終端機中設定這個環境變數：
+
+```bash
+export TF_GPU_ALLOCATOR=cuda_malloc_async
+uv run playground/open_duck_mini_v2/runner.py --env joystick ... (您的其他參數)
+```
+
+-----
+
+#### **方案二：降低訓練的記憶體佔用**
+
+如果以上方法都無效，最後的手段就是降低訓練本身佔用的記憶體，為 ONNX 匯出預留更多空間。
+
+您可以在執行指令時，透過參數來減少同時運行的環境數量。
+
+  * **PPO 參數日誌**：`'num_envs': 8192`
+
+  * **修改後的執行指令**：
+
+    ```bash
+    # 將 num_envs 從 8192 降低到 4096 或 2048
+    uv run playground/open_duck_mini_v2/runner.py --num_envs 4096 ... (您的其他參數)
+    ```
+
+**優缺點**：這個方法一定能減少記憶體使用，但同時也會降低訓練的效率，讓訓練達到同樣效果所需的時間變長。
+
+建議您從**方案一**開始嘗試，因為它在不影響訓練效率的情況下，最有可能直接解決這個問題。
