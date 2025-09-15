@@ -39,10 +39,13 @@ from playground.common.rewards import (
     cost_stand_still,
     reward_alive,
     # cost_legs_asymmetry,  # <-- 左右腳對稱站立成本
-    reward_symmetry,  # <-- 左右腳對稱站立獎勵
+    # reward_symmetry,  # <-- 左右腳對稱站立獎勵
     # reward_head_roll_zero,
     # reward_head_orientation_walking,
     reward_head_straight_standing,
+    # reward_hip_pitch_symmetry_standing,
+    # reward_hips_straight_standing,
+    reward_ideal_standing_hips,
 )
 from playground.open_duck_mini_v2.custom_rewards import reward_imitation
 
@@ -91,11 +94,14 @@ def default_config() -> config_dict.ConfigDict:
                 stand_still=-0.2,  # was -1.0 TODO try to relax this a bit ?
                 alive=20.0,
                 imitation=2.0, # 1.5
-                symmetry=4.5, # 雙腳平行就加分，有效果，可以修正雙腳站立時不正的狀況 5.0站姿歪斜
+                # symmetry=4.5, # 雙腳平行就加分，有效果，可以修正雙腳站立時不正的狀況 5.0站姿歪斜
                 # legs_asymmetry=-1.5,  # <-- 雙腳不平行就扣分 第一次-0.5無效果
                 # head_roll_zero=4.0, #頭部roll維持0度的獎勵
                 # head_orientation_walking=4.0, #走路時頭部儘量不動的獎勵
                 head_straight_standing=4.0, #站立時頭部回正的獎勵 
+                # hip_pitch_symmetry_standing=2.0, #站立時髖部回正的獎勵
+                # hips_straight_standing=3.0,
+                ideal_standing_hips=4.0, #站立時理想站姿的獎勵
             ),
             tracking_sigma=0.01,  # was working at 0.01
         ),
@@ -738,6 +744,9 @@ class Joystick(open_duck_mini_v2_base.OpenDuckMiniV2Env):
         #     0.0
         # )
 
+        qpos_actuators = self.get_actuator_joints_qpos(data.qpos)
+
+        # 獲取頭部角度
         head_yaw_angle = qpos[7]   # 根據 actuator 順序，head_yaw 索引為 7
         head_roll_angle = qpos[8]  # 根據 actuator 順序，head_roll 索引為 8
         forward_velocity = self.get_local_linvel(data)[0] # 取得 x 軸(前進)速度
@@ -745,6 +754,16 @@ class Joystick(open_duck_mini_v2_base.OpenDuckMiniV2Env):
         # 獲取當前的速度指令
         lin_vel_command = info["command"][0:2] # 線速度指令 (x, y)
         ang_vel_command = info["command"][2]   # 角速度指令 (yaw)
+
+        
+        head_yaw_angle = qpos[7]
+        head_roll_angle = qpos[8]
+        
+        # 獲取髖部 pitch 角度
+        # 根據 actuator 順序: left_hip_pitch=2, right_hip_pitch=11
+        left_hip_pitch_angle = qpos[2]
+        right_hip_pitch_angle = qpos[11]
+        
 
         ret = {
             "tracking_lin_vel": reward_tracking_lin_vel(
@@ -788,7 +807,7 @@ class Joystick(open_duck_mini_v2_base.OpenDuckMiniV2Env):
             #     self._right_knee_idx,
             # ),
             # 新增雙腳平行獎勵
-            "symmetry": reward_symmetry(left_qpos, right_qpos),
+            # "symmetry": reward_symmetry(left_qpos, right_qpos),
             
             # 新增head_roll角度回正獎勵
             # "head_roll_zero": head_roll_zero_reward,
@@ -804,6 +823,26 @@ class Joystick(open_duck_mini_v2_base.OpenDuckMiniV2Env):
             "head_straight_standing": reward_head_straight_standing(
                 head_yaw_angle=head_yaw_angle,
                 head_roll_angle=head_roll_angle,
+                lin_vel_command=lin_vel_command,
+                ang_vel_command=ang_vel_command,
+            ),
+            # 新增站立時，髖部角度回正獎勵
+            # "hip_pitch_symmetry_standing": reward_hip_pitch_symmetry_standing(
+            #     left_hip_pitch_angle=left_hip_pitch_angle,
+            #     right_hip_pitch_angle=right_hip_pitch_angle,
+            #     lin_vel_command=lin_vel_command,
+            #     ang_vel_command=ang_vel_command,
+            # ),
+            # 新增站立時，髖部角度回零獎勵
+            # "hips_straight_standing": reward_hips_straight_standing(
+            #     left_hip_pitch_angle=left_hip_pitch_angle,
+            #     right_hip_pitch_angle=right_hip_pitch_angle,
+            #     lin_vel_command=lin_vel_command,
+            #     ang_vel_command=ang_vel_command,
+            # ),
+            # 新增站立時，理想站姿獎勵
+            "ideal_standing_hips": reward_ideal_standing_hips(
+                qpos_actuators=qpos_actuators,
                 lin_vel_command=lin_vel_command,
                 ang_vel_command=ang_vel_command,
             ),

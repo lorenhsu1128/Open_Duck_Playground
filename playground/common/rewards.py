@@ -317,3 +317,87 @@ def reward_head_straight_standing(
 
   # 只有在站立指令下才啟用懲罰，否則獎勵為 0
   return jp.where(is_standing_command, orientation_penalty, 0.0)
+
+
+# 專門用來處理站立時的髖部（hip_pitch）對稱問題
+def reward_hip_pitch_symmetry_standing(
+    left_hip_pitch_angle: float,
+    right_hip_pitch_angle: float,
+    lin_vel_command: jax.Array,
+    ang_vel_command: float,
+    standing_threshold: float = 0.01,
+) -> float:
+  """
+  Penalizes asymmetry between left and right hip pitch joints ONLY when the robot is commanded to stand still.
+  """
+  # 計算對稱性的懲罰值 (角度差越小，懲罰越小)
+  symmetry_penalty = -jp.square(left_hip_pitch_angle - right_hip_pitch_angle)
+
+  # 判斷指令是否為「站立不動」
+  is_standing_command = (jp.sum(jp.abs(lin_vel_command)) < standing_threshold) & \
+                        (jp.abs(ang_vel_command) < standing_threshold)
+
+  # 只有在站立指令下才啟用懲罰，否則獎勵為 0
+  return jp.where(is_standing_command, symmetry_penalty, 0.0)
+
+
+# 在站立時，強力地將 left_hip_pitch 和 right_hip_pitch 都拉向 0.0（代表大腿與身體垂直的姿態）。
+def reward_hips_straight_standing(
+    left_hip_pitch_angle: float,
+    right_hip_pitch_angle: float,
+    lin_vel_command: jax.Array,
+    ang_vel_command: float,
+    target_angle: float = 0.0, # 我們想要的目標角度
+    standing_threshold: float = 0.01,
+) -> float:
+  """
+  Penalizes deviation from a target hip pitch angle for both legs
+  ONLY when the robot is commanded to stand still.
+  """
+  # 分別計算左右腿與目標角度的差距，並給予懲罰
+  left_hip_penalty = -jp.square(left_hip_pitch_angle - target_angle)
+  right_hip_penalty = -jp.square(right_hip_pitch_angle - target_angle)
+  total_penalty = left_hip_penalty + right_hip_penalty
+
+  # 判斷指令是否為「站立不動」
+  is_standing_command = (jp.sum(jp.abs(lin_vel_command)) < standing_threshold) & \
+                        (jp.abs(ang_vel_command) < standing_threshold)
+
+  # 只有在站立指令下才啟用懲罰
+  return jp.where(is_standing_command, total_penalty, 0.0)
+
+# 理想的「零位」站姿
+def reward_ideal_standing_hips(
+    qpos_actuators: jax.Array, # 直接傳入所有致動器的角度
+    lin_vel_command: jax.Array,
+    ang_vel_command: float,
+    standing_threshold: float = 0.01,
+) -> float:
+  """
+  Penalizes deviation from an ideal standing hip posture
+  ONLY when the robot is commanded to stand still.
+  """
+  # 根據致動器順序獲取對應關節角度
+  left_hip_yaw = qpos_actuators[0]
+  left_hip_roll = qpos_actuators[1]
+  left_hip_pitch = qpos_actuators[2]
+  right_hip_yaw = qpos_actuators[9]
+  right_hip_roll = qpos_actuators[10]
+  right_hip_pitch = qpos_actuators[11]
+
+  # 1. 計算 Roll 和 Yaw 的回正懲罰
+  roll_penalty = -jp.square(left_hip_roll) - jp.square(right_hip_roll)
+  yaw_penalty = -jp.square(left_hip_yaw) - jp.square(right_hip_yaw)
+
+  # 2. 計算 Pitch 的對稱懲罰 (相加等於 0)
+  pitch_penalty = -jp.square(left_hip_pitch + right_hip_pitch)
+
+  # 將所有懲罰加總
+  total_penalty = roll_penalty + yaw_penalty + pitch_penalty
+
+  # 判斷指令是否為「站立不動」
+  is_standing_command = (jp.sum(jp.abs(lin_vel_command)) < standing_threshold) & \
+                        (jp.abs(ang_vel_command) < standing_threshold)
+
+  # 只有在站立指令下才啟用懲罰
+  return jp.where(is_standing_command, total_penalty, 0.0)
