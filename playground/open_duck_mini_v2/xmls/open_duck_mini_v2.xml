@@ -60,7 +60,7 @@
       <site name="imu" pos="-0.08 -0.0 0.05"/>
       <!-- Link trunk_assembly -->
       <body name="trunk_assembly" pos="0 0 0.0" quat="1 0 0 0" childclass="open_duck_mini_v2">
-        <inertial pos="-0.0483259 -9.97823e-05 0.0384971" mass="0.698526"
+        <inertial pos="-0.0483259 -9.97823e-05 0.0384971" mass="2.698526"
           fullinertia="0.00167701 0.00344479 0.00292635 -1.31662e-05 -3.24953e-05 -2.15581e-06"/>
         <!-- Part body_front -->
         <geom type="mesh" class="visual" pos="-0.019 0 0.0648909" quat="1 0 0 0" mesh="body_front"
