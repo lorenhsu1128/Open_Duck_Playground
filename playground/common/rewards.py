@@ -424,6 +424,14 @@ def reward_ideal_standing_hips(
   right_hip_roll = qpos_actuators[10]
   right_hip_pitch = qpos_actuators[11]
 
+  # --- ▼▼▼ 新增的程式碼 ▼▼▼ ---
+  # 根據致動器順序獲取膝蓋關節角度
+  # left_knee = 3, right_knee = 12
+  left_knee = qpos_actuators[3]
+  right_knee = qpos_actuators[12]
+  # --- ▲▲▲ 新增結束 ▲▲▲ ---
+
+
   # --- ▼▼▼ 關鍵修改：將所有懲罰合併計算 ▼▼▼ ---
   # 計算所有不應該存在的角度偏差的絕對值總和
   total_deviation = (
@@ -431,7 +439,8 @@ def reward_ideal_standing_hips(
       + jp.abs(right_hip_roll)
       + jp.abs(left_hip_yaw)
       + jp.abs(right_hip_yaw)
-      + jp.abs(left_hip_pitch + right_hip_pitch) # Pitch 的對稱條件維持不變
+      + jp.abs(left_hip_pitch + right_hip_pitch) # Pitch 的對稱條件
+      + jp.abs(left_knee - right_knee)           # <-- 新增：膝蓋的對稱條件
   )
 
   # 給予一個與總偏差成正比的懲罰
