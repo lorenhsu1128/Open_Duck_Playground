@@ -308,7 +308,14 @@ def reward_head_straight_standing(
   Penalizes non-zero head yaw and roll ONLY when the robot is commanded to stand still.
   """
   # 計算頭部姿態的懲罰值
-  orientation_penalty = -jp.square(head_yaw_angle) - jp.square(head_roll_angle)
+#   orientation_penalty = -jp.square(head_yaw_angle) - jp.square(head_roll_angle)
+  # --- ▼▼▼ 關鍵修改：單獨加大對 yaw 的懲罰 ▼▼▼ ---
+  # 為 head_yaw 設定一個更高的懲罰權重，例如 3.0
+  yaw_penalty = -jp.square(head_yaw_angle) * 3.0
+  roll_penalty = -jp.square(head_roll_angle) # roll 的懲罰維持原樣
+
+  orientation_penalty = yaw_penalty + roll_penalty
+  # --- ▲▲▲ 修改結束 ▲▲▲ ---
 
   # 判斷指令是否為「站立不動」
   # 檢查線速度和角速度指令是否都趨近於零

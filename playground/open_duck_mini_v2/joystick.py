@@ -98,7 +98,7 @@ def default_config() -> config_dict.ConfigDict:
                 # legs_asymmetry=-1.5,  # <-- 雙腳不平行就扣分 第一次-0.5無效果
                 # head_roll_zero=4.0, #頭部roll維持0度的獎勵
                 # head_orientation_walking=4.0, #走路時頭部儘量不動的獎勵
-                head_straight_standing=4.0, #站立時頭部回正的獎勵 
+                head_straight_standing=5.5, #站立時頭部回正的獎勵 4.0 +- 0.5 4.5
                 # hip_pitch_symmetry_standing=2.0, #站立時髖部回正的獎勵
                 # hips_straight_standing=3.0,
                 ideal_standing_hips=4.0, #站立時理想站姿的獎勵
