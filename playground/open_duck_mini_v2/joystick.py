@@ -93,15 +93,15 @@ def default_config() -> config_dict.ConfigDict:
                 action_rate=-0.5,  # was -1.5
                 stand_still=-0.2,  # was -1.0 TODO try to relax this a bit ?
                 alive=20.0,
-                imitation=2.0, # 1.5
+                imitation=2.0, # 1.5 穩定版為2.0 現在讓機器人自主學習 0.1
                 # symmetry=4.5, # 雙腳平行就加分，有效果，可以修正雙腳站立時不正的狀況 5.0站姿歪斜
                 # legs_asymmetry=-1.5,  # <-- 雙腳不平行就扣分 第一次-0.5無效果
                 # head_roll_zero=4.0, #頭部roll維持0度的獎勵
                 # head_orientation_walking=4.0, #走路時頭部儘量不動的獎勵
-                head_straight_standing=5.5, #站立時頭部回正的獎勵 4.0 +- 0.5 4.5
+                head_straight_standing=5.5, #站立時頭部回正的獎勵 4.0 +- 0.5 穩定版為5.5
                 # hip_pitch_symmetry_standing=2.0, #站立時髖部回正的獎勵
                 # hips_straight_standing=3.0,
-                ideal_standing_hips=4.0, #站立時理想站姿的獎勵
+                ideal_standing_hips=4.0, #站立時理想站姿的獎勵 穩定版為4.0
             ),
             tracking_sigma=0.01,  # was working at 0.01
         ),
@@ -763,6 +763,32 @@ class Joystick(open_duck_mini_v2_base.OpenDuckMiniV2Env):
         # 根據 actuator 順序: left_hip_pitch=2, right_hip_pitch=11
         left_hip_pitch_angle = qpos[2]
         right_hip_pitch_angle = qpos[11]
+
+        # 獲取轉彎指令的絕對值
+        ang_vel_command_abs = jp.abs(info["command"][2])
+        # 獲取設定的最大轉彎速度
+        max_ang_vel = self._config.ang_vel_yaw[1]
+
+        # 根據轉彎指令的大小，動態計算模仿獎勵的折扣率
+        # 轉彎指令為 0 時，折扣率為 1.0 (完全模仿)
+        # 轉彎指令達到最大時，折扣率最低降至 0.1 (10%模仿)
+        imitation_discount = 1.0 - (ang_vel_command_abs / max_ang_vel) * 0.9
+        
+        # 計算原始的模仿獎勵
+        imitation_reward = reward_imitation(
+            self.get_floating_base_qpos(data.qpos),
+            self.get_floating_base_qvel(data.qvel),
+            self.get_actuator_joints_qpos(data.qpos),
+            self.get_actuator_joints_qvel(data.qvel),
+            contact,
+            info["current_reference_motion"],
+            info["command"],
+            USE_IMITATION_REWARD,
+        )
+        
+        # 應用動態折扣，得到最終的模仿獎勵
+        final_imitation_reward = imitation_reward * imitation_discount
+
         
 
         ret = {
@@ -780,16 +806,17 @@ class Joystick(open_duck_mini_v2_base.OpenDuckMiniV2Env):
             "torques": cost_torques(data.actuator_force),
             "action_rate": cost_action_rate(action, info["last_act"]),
             "alive": reward_alive(),
-            "imitation": reward_imitation(  # FIXME, this reward is so adhoc...
-                self.get_floating_base_qpos(data.qpos),  # floating base qpos
-                self.get_floating_base_qvel(data.qvel),  # floating base qvel
-                self.get_actuator_joints_qpos(data.qpos),
-                self.get_actuator_joints_qvel(data.qvel),
-                contact,
-                info["current_reference_motion"],
-                info["command"],
-                USE_IMITATION_REWARD,
-            ),
+            # "imitation": reward_imitation(  # FIXME, this reward is so adhoc...
+            #     self.get_floating_base_qpos(data.qpos),  # floating base qpos
+            #     self.get_floating_base_qvel(data.qvel),  # floating base qvel
+            #     self.get_actuator_joints_qpos(data.qpos),
+            #     self.get_actuator_joints_qvel(data.qvel),
+            #     contact,
+            #     info["current_reference_motion"],
+            #     info["command"],
+            #     USE_IMITATION_REWARD,
+            # ),
+            "imitation": final_imitation_reward, # <-- 使用我們計算出的最終值
             "stand_still": cost_stand_still(
                 # info["command"], data.qpos[7:], data.qvel[6:], self._default_pose
                 info["command"],
