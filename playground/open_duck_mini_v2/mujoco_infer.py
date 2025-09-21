@@ -218,6 +218,24 @@ class MjInfer(MJInferBase):
                                         ),
                                     ]
                                 )
+
+                            # 獲取當前的轉彎指令和實際的轉彎速度
+                            ang_vel_command = self.commands[2]
+                            actual_ang_vel = self.get_gyro(self.data)[2] # Z 軸的角速度
+
+                            # 獲取轉彎獎勵是否被觸發的狀態
+                            # (我們可以直接複製 rewards.py 中的邏輯來判斷)
+                            turn_threshold = 0.1 # <-- 在這裡設定您想測試的值
+                            is_turning = abs(ang_vel_command) > turn_threshold
+                            
+                            # 每隔一段時間印出一次數據，避免刷屏
+                            if counter % (self.decimation * 10) == 0:
+                                print(
+                                    f"轉彎指令: {ang_vel_command:+.2f} | "
+                                    f"實際角速度: {actual_ang_vel:+.2f} | "
+                                    f"轉彎獎勵觸發: {'是' if is_turning else '否'}"
+                                )
+
                             obs = self.get_obs(
                                 self.data,
                                 self.commands,
