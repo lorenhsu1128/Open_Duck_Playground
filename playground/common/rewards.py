@@ -461,3 +461,53 @@ def reward_ideal_standing_hips(
 
   # 只有在站立指令下才啟用懲罰
   return jp.where(is_standing_command, total_penalty, 0.0)
+
+# 在轉彎時，抬高腳會額外加分
+def reward_hip_pitch_in_turn(
+    left_hip_pitch_angle: float,
+    right_hip_pitch_angle: float,
+    ang_vel_command: float,
+    turn_threshold: float = 0.2,
+) -> float:
+  """
+  Rewards higher hip pitch angles (both positive and negative)
+  ONLY when the robot is commanded to turn.
+  """
+  # 計算雙腿抬升的總幅度 (無論向前還是向後)
+  total_pitch_magnitude = jp.abs(left_hip_pitch_angle) + jp.abs(right_hip_pitch_angle)
+
+  # 判斷是否正在轉彎 (角速度指令 > 閾值)
+  is_turning = jp.abs(ang_vel_command) > turn_threshold
+
+  # 只有在轉彎時才啟用獎勵
+  return jp.where(is_turning, total_pitch_magnitude, 0.0)
+
+
+# 非對稱轉彎步態獎勵
+def reward_asymmetric_turning_gait(
+    left_hip_pitch_angle: float,
+    right_hip_pitch_angle: float,
+    ang_vel_command: float,
+    turn_threshold: float = 0.1,
+) -> float:
+  """
+  Explicitly rewards the correct outer leg for swinging forward during a turn.
+  This version is more numerically stable and avoids using relu on negative values.
+  """
+
+  # 判斷指令是否為左轉
+  is_turning_left = ang_vel_command < -turn_threshold
+  # 判斷指令是否為右轉
+  is_turning_right = ang_vel_command > turn_threshold
+
+  # 左轉時，獎勵右腿向前擺動 (right_hip_pitch > 0)
+  # 我們只在右腿向前擺時才給予獎勵，乘以 is_turning_left 來啟用/禁用
+  left_turn_reward = jp.maximum(0, right_hip_pitch_angle) * is_turning_left
+
+  # 右轉時，獎勵左腿向前擺動 (left_hip_pitch < 0)
+  # 我們只在左腿向前擺時才給予獎勵，乘以 is_turning_right 來啟用/禁用
+  right_turn_reward = jp.maximum(0, -left_hip_pitch_angle) * is_turning_right
+  
+
+  # 總獎勵是兩者之和 (因為在任何時刻，只可能有一個不為零)
+  return left_turn_reward + right_turn_reward

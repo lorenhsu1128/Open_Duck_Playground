@@ -46,6 +46,8 @@ from playground.common.rewards import (
     # reward_hip_pitch_symmetry_standing,
     # reward_hips_straight_standing,
     reward_ideal_standing_hips,
+    # reward_hip_pitch_in_turn,
+    reward_asymmetric_turning_gait
 )
 from playground.open_duck_mini_v2.custom_rewards import reward_imitation
 
@@ -68,6 +70,12 @@ def default_config() -> config_dict.ConfigDict:
         history_len=0,
         soft_joint_pos_limit_factor=0.95,
         max_motor_velocity=5.24,  # rad/s
+        # 提高 entropy_cost 會在獎勵系統中加入一個新的目標：「保持你決策的不確定性」。
+        # 這會直接懲罰那些過於自信、單一的策略，強迫 AI 在整個訓練過程中都保持探索的熱情，從而更容易跳出局部最優解。
+        # 明確地定義 entropy_cost，覆蓋掉預設值
+        # 建議值: 0.01 或 0.015
+        entropy_cost=0.03, #0.02
+
         noise_config=config_dict.create(
             level=1.0,  # Set to 0.0 to disable noise.
             action_min_delay=0,  # env steps
@@ -87,8 +95,10 @@ def default_config() -> config_dict.ConfigDict:
         ),
         reward_config=config_dict.create(
             scales=config_dict.create(
-                tracking_lin_vel=2.5,
-                tracking_ang_vel=6.0,
+                # tracking_lin_vel=2.5,
+                # tracking_ang_vel=6.0,
+                tracking_lin_vel=4.0,
+                tracking_ang_vel=10.0,
                 torques=-1.0e-3,
                 action_rate=-0.5,  # was -1.5
                 stand_still=-0.2,  # was -1.0 TODO try to relax this a bit ?
@@ -101,7 +111,9 @@ def default_config() -> config_dict.ConfigDict:
                 head_straight_standing=5.5, #站立時頭部回正的獎勵 4.0 +- 0.5 穩定版為5.5
                 # hip_pitch_symmetry_standing=2.0, #站立時髖部回正的獎勵
                 # hips_straight_standing=3.0,
-                ideal_standing_hips=4.0, #站立時理想站姿的獎勵 穩定版為4.0
+                ideal_standing_hips=6.0, #站立時理想站姿的獎勵 穩定版為4.0
+                # hip_pitch_in_turn=2.0, # 轉彎時的抬腳獎勵，可以從 1.0 ~ 2.0 開始嘗試
+                asymmetric_turning_gait=4.0, #2.5
             ),
             tracking_sigma=0.01,  # was working at 0.01
         ),
@@ -110,9 +122,11 @@ def default_config() -> config_dict.ConfigDict:
             interval_range=[5.0, 10.0],
             magnitude_range=[0.1, 1.0],
         ),
-        lin_vel_x=[-0.15, 0.15],
+        # 將 x 軸線速度的範圍從 [-0.15, 0.15] 擴大
+        # lin_vel_x=[-0.15, 0.15], 
+        lin_vel_x=[-0.20, 0.20], 
         lin_vel_y=[-0.2, 0.2],
-        ang_vel_yaw=[-1.0, 1.0],  # [-1.0, 1.0]
+        ang_vel_yaw=[-1.5, 1.5],  # [-1.0, 1.0]
         neck_pitch_range=[-0.34, 1.1],
         head_pitch_range=[-0.78, 0.78],
         head_yaw_range=[-1.5, 1.5],
@@ -789,7 +803,30 @@ class Joystick(open_duck_mini_v2_base.OpenDuckMiniV2Env):
         # 應用動態折扣，得到最終的模仿獎勵
         final_imitation_reward = imitation_reward * imitation_discount
 
+
+        left_hip_pitch = qpos_actuators[2]
+        right_hip_pitch = qpos_actuators[11]
+        ang_vel_command = info["command"][2]
         
+        # # 1. 計算基礎的角速度追蹤獎勵
+        # tracking_ang_vel_reward = reward_tracking_ang_vel(
+        #         info["command"],
+        #         self.get_gyro(data),
+        #         self._config.reward_config.tracking_sigma,
+        #     )
+        
+        # # 2. 判斷指令是否為右轉 (ang_vel_command > 0)
+        # is_turning_right_command = ang_vel_command > 0
+        
+        # # 3. 如果是右轉指令，給予一個額外的獎勵加成 (例如 1.5 代表 50% 的加成)
+        # right_turn_bonus = 1.5 
+        
+        # # 4. 應用加成
+        # final_tracking_ang_vel_reward = jp.where(
+        #     is_turning_right_command,
+        #     tracking_ang_vel_reward * right_turn_bonus,
+        #     tracking_ang_vel_reward
+        # )
 
         ret = {
             "tracking_lin_vel": reward_tracking_lin_vel(
@@ -871,6 +908,18 @@ class Joystick(open_duck_mini_v2_base.OpenDuckMiniV2Env):
             "ideal_standing_hips": reward_ideal_standing_hips(
                 qpos_actuators=qpos_actuators,
                 lin_vel_command=lin_vel_command,
+                ang_vel_command=ang_vel_command,
+            ),
+            # 新增轉彎時，抬高腳獎勵
+            # "hip_pitch_in_turn": reward_hip_pitch_in_turn(
+            #     left_hip_pitch_angle=left_hip_pitch,
+            #     right_hip_pitch_angle=right_hip_pitch,
+            #     ang_vel_command=ang_vel_command,
+            # ),
+            # 非對稱轉彎步態獎勵
+            "asymmetric_turning_gait": reward_asymmetric_turning_gait(
+                left_hip_pitch_angle=left_hip_pitch,
+                right_hip_pitch_angle=right_hip_pitch,
                 ang_vel_command=ang_vel_command,
             ),
         }
