@@ -41,13 +41,14 @@ from playground.common.rewards import (
     # cost_legs_asymmetry,  # <-- 左右腳對稱站立成本
     # reward_symmetry,  # <-- 左右腳對稱站立獎勵
     # reward_head_roll_zero,
-    # reward_head_orientation_walking,
+    reward_head_orientation_walking,
     reward_head_straight_standing,
     # reward_hip_pitch_symmetry_standing,
     # reward_hips_straight_standing,
     reward_ideal_standing_hips,
     # reward_hip_pitch_in_turn,
-    reward_asymmetric_turning_gait
+    reward_asymmetric_turning_gait,
+    reward_head_forward_tilt,
 )
 from playground.open_duck_mini_v2.custom_rewards import reward_imitation
 
@@ -103,17 +104,19 @@ def default_config() -> config_dict.ConfigDict:
                 action_rate=-0.5,  # was -1.5
                 stand_still=-0.2,  # was -1.0 TODO try to relax this a bit ?
                 alive=20.0,
-                imitation=2.0, # 1.5 穩定版為2.0
+                imitation=1.5, # 1.5 穩定版為2.0
                 # symmetry=4.5, # 雙腳平行就加分，有效果，可以修正雙腳站立時不正的狀況 5.0站姿歪斜
                 # legs_asymmetry=-1.5,  # <-- 雙腳不平行就扣分 第一次-0.5無效果
                 # head_roll_zero=4.0, #頭部roll維持0度的獎勵
-                # head_orientation_walking=4.0, #走路時頭部儘量不動的獎勵
+                head_orientation_walking=5.0, #走路時頭部儘量不動的獎勵
                 head_straight_standing=5.5, #站立時頭部回正的獎勵 4.0 +- 0.5 穩定版為5.5
                 # hip_pitch_symmetry_standing=2.0, #站立時髖部回正的獎勵
                 # hips_straight_standing=3.0,
                 ideal_standing_hips=6.0, #站立時理想站姿的獎勵 穩定版為4.0
                 # hip_pitch_in_turn=2.0, # 轉彎時的抬腳獎勵，可以從 1.0 ~ 2.0 開始嘗試
-                asymmetric_turning_gait=4.0, #2.5
+                asymmetric_turning_gait=0.0, #2.5
+                # 為頭部前傾設定一個權重
+                head_forward_tilt=5.0,
             ),
             tracking_sigma=0.01,  # was working at 0.01
         ),
@@ -782,7 +785,7 @@ class Joystick(open_duck_mini_v2_base.OpenDuckMiniV2Env):
         ang_vel_command_abs = jp.abs(info["command"][2])
         # 獲取設定的最大轉彎速度
         max_ang_vel = self._config.ang_vel_yaw[1]
-
+        
         # 根據轉彎指令的大小，動態計算模仿獎勵的折扣率
         # 轉彎指令為 0 時，折扣率為 1.0 (完全模仿)
         # 轉彎指令達到最大時，折扣率最低降至 0.1 (10%模仿)
@@ -807,6 +810,13 @@ class Joystick(open_duck_mini_v2_base.OpenDuckMiniV2Env):
         left_hip_pitch = qpos_actuators[2]
         right_hip_pitch = qpos_actuators[11]
         ang_vel_command = info["command"][2]
+
+        
+        # 獲取頭部和頸部角度
+        # 根據 actuator 順序: neck_pitch=5, head_pitch=6
+        neck_pitch_angle = qpos_actuators[5]
+        head_pitch_angle = qpos_actuators[6]
+
         
         # # 1. 計算基礎的角速度追蹤獎勵
         # tracking_ang_vel_reward = reward_tracking_ang_vel(
@@ -877,11 +887,11 @@ class Joystick(open_duck_mini_v2_base.OpenDuckMiniV2Env):
             # "head_roll_zero": head_roll_zero_reward,
 
             # 新增走路時，頭部角度回正獎勵
-            # "head_orientation_walking": reward_head_orientation_walking(
-            #     head_roll_angle=head_roll_angle,
-            #     head_yaw_angle=head_yaw_angle,
-            #     forward_velocity=forward_velocity,
-            # ),
+            "head_orientation_walking": reward_head_orientation_walking(
+                head_roll_angle=head_roll_angle,
+                head_yaw_angle=head_yaw_angle,
+                forward_velocity=forward_velocity,
+            ),
 
             # 新增站立時，頭部角度回正獎勵
             "head_straight_standing": reward_head_straight_standing(
@@ -921,6 +931,11 @@ class Joystick(open_duck_mini_v2_base.OpenDuckMiniV2Env):
                 left_hip_pitch_angle=left_hip_pitch,
                 right_hip_pitch_angle=right_hip_pitch,
                 ang_vel_command=ang_vel_command,
+            ),
+            # 獎勵頭部微微前傾
+            "head_forward_tilt": reward_head_forward_tilt(
+                neck_pitch_angle=neck_pitch_angle,
+                head_pitch_angle=head_pitch_angle,
             ),
         }
 

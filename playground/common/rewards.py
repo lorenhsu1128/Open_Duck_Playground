@@ -431,15 +431,15 @@ def reward_ideal_standing_hips(
   right_hip_roll = qpos_actuators[10]
   right_hip_pitch = qpos_actuators[11]
 
-  # --- ▼▼▼ 新增的程式碼 ▼▼▼ ---
+  
   # 根據致動器順序獲取膝蓋關節角度
   # left_knee = 3, right_knee = 12
   left_knee = qpos_actuators[3]
   right_knee = qpos_actuators[12]
-  # --- ▲▲▲ 新增結束 ▲▲▲ ---
 
 
-  # --- ▼▼▼ 關鍵修改：將所有懲罰合併計算 ▼▼▼ ---
+
+  
   # 計算所有不應該存在的角度偏差的絕對值總和
   total_deviation = (
       jp.abs(left_hip_roll)
@@ -452,7 +452,7 @@ def reward_ideal_standing_hips(
 
   # 給予一個與總偏差成正比的懲罰
   total_penalty = -total_deviation
-  # --- ▲▲▲ 修改結束 ▲▲▲ ---
+
 
 
   # 判斷指令是否為「站立不動」
@@ -511,3 +511,17 @@ def reward_asymmetric_turning_gait(
 
   # 總獎勵是兩者之和 (因為在任何時刻，只可能有一個不為零)
   return left_turn_reward + right_turn_reward
+
+# 獎勵頭部微微前傾
+def reward_head_forward_tilt(
+    neck_pitch_angle: float,
+    head_pitch_angle: float,
+    target_tilt: float = 0.2, # 目標前傾角度 (約 11.5 度)
+) -> float:
+  """
+  Rewards the head for maintaining a slight forward tilt.
+  """
+  # 計算總的頭部前傾角度
+  total_head_pitch = neck_pitch_angle + head_pitch_angle
+  # 懲罰與目標角度的偏差
+  return -jp.square(total_head_pitch - target_tilt)
