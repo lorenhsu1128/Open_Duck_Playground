@@ -525,3 +525,99 @@ def reward_head_forward_tilt(
   total_head_pitch = neck_pitch_angle + head_pitch_angle
   # 懲罰與目標角度的偏差
   return -jp.square(total_head_pitch - target_tilt)
+
+
+# --- ▼▼▼ [核心修改 1] 更新 head_straight_standing 函式 ▼▼▼ ---
+def head_straight_standing(
+    head_yaw_angle: float,
+    head_roll_angle: float,
+    lin_vel_command: jax.Array,
+    ang_vel_command: float,
+    head_commands: jax.Array, # <-- 新增這個參數
+    standing_threshold: float = 0.01,
+) -> float:
+  """
+  Penalizes non-zero head yaw and roll ONLY when the robot is commanded 
+  to be perfectly still (including the head).
+  """
+  # 條件 1: 身體指令是靜止
+  is_body_standing_command = (jp.sum(jp.abs(lin_vel_command)) < standing_threshold) & \
+                             (jp.abs(ang_vel_command) < standing_threshold)
+  # 條件 2: 頭部指令也是靜止
+  is_head_still_command = jp.sum(jp.abs(head_commands)) < standing_threshold
+
+  # 只有在身體和頭部都被命令靜止時，才觸發這個獎勵
+  should_apply_reward = is_body_standing_command & is_head_still_command
+
+  # 懲罰邏輯
+  yaw_penalty = -jp.square(head_yaw_angle) * 3.0
+  roll_penalty = -jp.square(head_roll_angle)
+  orientation_penalty = yaw_penalty + roll_penalty
+
+  return jp.where(should_apply_reward, orientation_penalty, 0.0)
+# --- ▲▲▲ 修改結束 ▲▲▲ ---
+
+
+# --- ▼▼▼ [核心修改 2] 更新 ideal_standing_hips 函式 ▼▼▼ ---
+def ideal_standing_hips(
+    qpos_actuators: jax.Array,
+    lin_vel_command: jax.Array,
+    ang_vel_command: float,
+    head_commands: jax.Array, # <-- 新增這個參數
+    standing_threshold: float = 0.01,
+) -> float:
+  """
+  Penalizes deviation from an ideal standing hip posture
+  ONLY when the robot is commanded to be perfectly still (including the head).
+  """
+  is_body_standing_command = (jp.sum(jp.abs(lin_vel_command)) < standing_threshold) & \
+                             (jp.abs(ang_vel_command) < standing_threshold)
+  is_head_still_command = jp.sum(jp.abs(head_commands)) < standing_threshold
+
+  should_apply_reward = is_body_standing_command & is_head_still_command
+
+  # 懲罰邏輯
+  left_hip_yaw = qpos_actuators[0]
+  left_hip_roll = qpos_actuators[1]
+  left_hip_pitch = qpos_actuators[2]
+  left_knee = qpos_actuators[3]
+  right_hip_yaw = qpos_actuators[9]
+  right_hip_roll = qpos_actuators[10]
+  right_hip_pitch = qpos_actuators[11]
+  right_knee = qpos_actuators[12]
+  
+  total_deviation = (
+      jp.abs(left_hip_roll) + jp.abs(right_hip_roll) +
+      jp.abs(left_hip_yaw) + jp.abs(right_hip_yaw) +
+      jp.abs(left_hip_pitch + right_hip_pitch) +
+      jp.abs(left_knee - right_knee)
+  )
+  total_penalty = -total_deviation
+  
+  return jp.where(should_apply_reward, total_penalty, 0.0)
+# --- ▲▲▲ 修改結束 ▲▲▲ ---
+
+
+# --- ▼▼▼ [核心修改 3] 新增 balance_with_head_motion 函式 ▼▼▼ ---
+def reward_balance_with_head_motion(
+    feet_contacts: jax.Array,
+    lin_vel_command: jax.Array,
+    ang_vel_command: float,
+    head_commands: jax.Array,
+    standing_threshold: float = 0.01,
+) -> float:
+  """
+  Rewards the robot for keeping both feet on the ground while being commanded
+  to stand still and only move its head.
+  """
+  is_standing_command = (jp.sum(jp.abs(lin_vel_command)) < standing_threshold) & \
+                        (jp.abs(ang_vel_command) < standing_threshold)
+  is_head_only_command = jp.sum(jp.abs(head_commands)) > 0.0
+  both_feet_on_ground = jp.all(feet_contacts)
+
+  should_apply_reward = is_standing_command & is_head_only_command
+  
+  reward_value = jp.where(both_feet_on_ground, 1.0, -1.0)
+
+  return jp.where(should_apply_reward, reward_value, 0.0)
+# --- ▲▲▲ 修改結束 ▲▲▲ ---

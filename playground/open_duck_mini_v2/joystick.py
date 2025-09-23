@@ -49,6 +49,9 @@ from playground.common.rewards import (
     # reward_hip_pitch_in_turn,
     reward_asymmetric_turning_gait,
     reward_head_forward_tilt,
+    head_straight_standing,
+    ideal_standing_hips,
+    reward_balance_with_head_motion,
 )
 from playground.open_duck_mini_v2.custom_rewards import reward_imitation
 
@@ -117,6 +120,7 @@ def default_config() -> config_dict.ConfigDict:
                 asymmetric_turning_gait=0.0, #2.5
                 # 為頭部前傾設定一個權重
                 head_forward_tilt=5.0,
+                balance_with_head_motion=10.0,
             ),
             tracking_sigma=0.01,  # was working at 0.01
         ),
@@ -811,6 +815,7 @@ class Joystick(open_duck_mini_v2_base.OpenDuckMiniV2Env):
         right_hip_pitch = qpos_actuators[11]
         ang_vel_command = info["command"][2]
 
+        head_commands = info["command"][3:]
         
         # 獲取頭部和頸部角度
         # 根據 actuator 順序: neck_pitch=5, head_pitch=6
@@ -894,12 +899,12 @@ class Joystick(open_duck_mini_v2_base.OpenDuckMiniV2Env):
             ),
 
             # 新增站立時，頭部角度回正獎勵
-            "head_straight_standing": reward_head_straight_standing(
-                head_yaw_angle=head_yaw_angle,
-                head_roll_angle=head_roll_angle,
-                lin_vel_command=lin_vel_command,
-                ang_vel_command=ang_vel_command,
-            ),
+            # "head_straight_standing": reward_head_straight_standing(
+            #     head_yaw_angle=head_yaw_angle,
+            #     head_roll_angle=head_roll_angle,
+            #     lin_vel_command=lin_vel_command,
+            #     ang_vel_command=ang_vel_command,
+            # ),
             # 新增站立時，髖部角度回正獎勵
             # "hip_pitch_symmetry_standing": reward_hip_pitch_symmetry_standing(
             #     left_hip_pitch_angle=left_hip_pitch_angle,
@@ -915,11 +920,11 @@ class Joystick(open_duck_mini_v2_base.OpenDuckMiniV2Env):
             #     ang_vel_command=ang_vel_command,
             # ),
             # 新增站立時，理想站姿獎勵
-            "ideal_standing_hips": reward_ideal_standing_hips(
-                qpos_actuators=qpos_actuators,
-                lin_vel_command=lin_vel_command,
-                ang_vel_command=ang_vel_command,
-            ),
+            # "ideal_standing_hips": reward_ideal_standing_hips(
+            #     qpos_actuators=qpos_actuators,
+            #     lin_vel_command=lin_vel_command,
+            #     ang_vel_command=ang_vel_command,
+            # ),
             # 新增轉彎時，抬高腳獎勵
             # "hip_pitch_in_turn": reward_hip_pitch_in_turn(
             #     left_hip_pitch_angle=left_hip_pitch,
@@ -937,76 +942,151 @@ class Joystick(open_duck_mini_v2_base.OpenDuckMiniV2Env):
                 neck_pitch_angle=neck_pitch_angle,
                 head_pitch_angle=head_pitch_angle,
             ),
+            # --- ▼▼▼ [核心修改] 使用更新後的獎勵函式 ▼▼▼ ---
+            "head_straight_standing": head_straight_standing(
+                head_yaw_angle=head_yaw_angle,
+                head_roll_angle=head_roll_angle,
+                lin_vel_command=lin_vel_command,
+                ang_vel_command=ang_vel_command,
+                head_commands=head_commands, # 傳入頭部指令
+            ),
+            "ideal_standing_hips": ideal_standing_hips(
+                qpos_actuators=qpos_actuators,
+                lin_vel_command=lin_vel_command,
+                ang_vel_command=ang_vel_command,
+                head_commands=head_commands, # 傳入頭部指令
+            ),
+            "balance_with_head_motion": reward_balance_with_head_motion(
+                feet_contacts=contact,
+                lin_vel_command=lin_vel_command,
+                ang_vel_command=ang_vel_command,
+                head_commands=head_commands,
+            ),
         }
 
         return ret
 
     def sample_command(self, rng: jax.Array) -> jax.Array:
-        rng1, rng2, rng3, rng4, rng5, rng6, rng7, rng8 = jax.random.split(rng, 8) # 新增rng9給 無頭部控制模式
-        # rng1, rng2, rng3, rng4, rng5, rng6, rng7, rng8, rng9 = jax.random.split(rng, 9) # 新增rng9給 無頭部控制模式
+        # --- ▼▼▼ [核心修改] 創造三種訓練情境 ▼▼▼ ---
+        key_case, key_move, key_head_move = jax.random.split(rng, 3)
+        
+        # --- 情境 A: 正常移動指令 (全身隨機運動) ---
+        rng_vel_x, rng_vel_y, rng_ang_vel, rng_neck_p, rng_head_p, rng_head_y, rng_head_r = jax.random.split(key_move, 7)
+        lin_vel_x = jax.random.uniform(rng_vel_x, minval=self._config.lin_vel_x[0], maxval=self._config.lin_vel_x[1])
+        lin_vel_y = jax.random.uniform(rng_vel_y, minval=self._config.lin_vel_y[0], maxval=self._config.lin_vel_y[1])
+        ang_vel_yaw = jax.random.uniform(rng_ang_vel, minval=self._config.ang_vel_yaw[0], maxval=self._config.ang_vel_yaw[1])
+        neck_pitch = jax.random.uniform(rng_neck_p, minval=self._config.neck_pitch_range[0], maxval=self._config.neck_pitch_range[1])
+        head_pitch = jax.random.uniform(rng_head_p, minval=self._config.head_pitch_range[0], maxval=self._config.head_pitch_range[1])
+        head_yaw = jax.random.uniform(rng_head_y, minval=self._config.head_yaw_range[0], maxval=self._config.head_yaw_range[1])
+        head_roll = jax.random.uniform(rng_head_r, minval=self._config.head_roll_range[0], maxval=self._config.head_roll_range[1])
+        move_command = jp.hstack([lin_vel_x, lin_vel_y, ang_vel_yaw, neck_pitch, head_pitch, head_yaw, head_roll])
 
-        lin_vel_x = jax.random.uniform(
-            rng1, minval=self._config.lin_vel_x[0], maxval=self._config.lin_vel_x[1]
+        # --- 情境 B: 完全靜止指令 ---
+        stand_command = jp.zeros(7)
+        
+        # --- 情境 C: 站立且僅頭部運動指令 ---
+        rng_neck_p_new, rng_head_p_new, rng_head_y_new, rng_head_r_new = jax.random.split(key_head_move, 4)
+        neck_pitch_new = jax.random.uniform(rng_neck_p_new, minval=self._config.neck_pitch_range[0], maxval=self._config.neck_pitch_range[1])
+        head_pitch_new = jax.random.uniform(rng_head_p_new, minval=self._config.head_pitch_range[0], maxval=self._config.head_pitch_range[1])
+        head_yaw_new = jax.random.uniform(rng_head_y_new, minval=self._config.head_yaw_range[0], maxval=self._config.head_yaw_range[1])
+        head_roll_new = jax.random.uniform(rng_head_r_new, minval=self._config.head_roll_range[0], maxval=self._config.head_roll_range[1])
+        stand_and_move_head_command = jp.hstack([0.0, 0.0, 0.0, neck_pitch_new, head_pitch_new, head_yaw_new, head_roll_new])
+
+        # --- 使用隨機數在三種情境中選擇一種 ---
+        # 60% 機率移動，20% 機率完全靜止，20% 機率站立動頭
+        command = jax.lax.switch(
+            jax.random.choice(key_case, 3, p=jp.array([0.6, 0.2, 0.2])),
+            [lambda: move_command, lambda: stand_command, lambda: stand_and_move_head_command],
         )
-        lin_vel_y = jax.random.uniform(
-            rng2, minval=self._config.lin_vel_y[0], maxval=self._config.lin_vel_y[1]
-        )
-        ang_vel_yaw = jax.random.uniform(
-            rng3,
-            minval=self._config.ang_vel_yaw[0],
-            maxval=self._config.ang_vel_yaw[1],
-        )
+        return command
 
-        neck_pitch = jax.random.uniform(
-            rng5,
-            minval=self._config.neck_pitch_range[0] * self._config.head_range_factor,
-            maxval=self._config.neck_pitch_range[1] * self._config.head_range_factor,
-        )
+    # def sample_command(self, rng: jax.Array) -> jax.Array:
+    #     rng1, rng2, rng3, rng4, rng5, rng6, rng7, rng8 = jax.random.split(rng, 8) # 新增rng9給 無頭部控制模式
+    #     # rng1, rng2, rng3, rng4, rng5, rng6, rng7, rng8, rng9 = jax.random.split(rng, 9) # 新增rng9給 無頭部控制模式
 
-        head_pitch = jax.random.uniform(
-            rng6,
-            minval=self._config.head_pitch_range[0] * self._config.head_range_factor,
-            maxval=self._config.head_pitch_range[1] * self._config.head_range_factor,
-        )
+    #     lin_vel_x = jax.random.uniform(
+    #         rng1, minval=self._config.lin_vel_x[0], maxval=self._config.lin_vel_x[1]
+    #     )
+    #     lin_vel_y = jax.random.uniform(
+    #         rng2, minval=self._config.lin_vel_y[0], maxval=self._config.lin_vel_y[1]
+    #     )
+    #     ang_vel_yaw = jax.random.uniform(
+    #         rng3,
+    #         minval=self._config.ang_vel_yaw[0],
+    #         maxval=self._config.ang_vel_yaw[1],
+    #     )
 
-        head_yaw = jax.random.uniform(
-            rng7,
-            minval=self._config.head_yaw_range[0] * self._config.head_range_factor,
-            maxval=self._config.head_yaw_range[1] * self._config.head_range_factor,
-        )
+    #     # --- ▼▼▼ 關鍵修改：融合隨機指令與固定目標 ▼▼▼ ---
+        
+    #     # 1. 像往常一樣，產生隨機的頭部姿態指令
+    #     random_neck_pitch = jax.random.uniform(
+    #         rng5,
+    #         minval=self._config.neck_pitch_range[0] * self._config.head_range_factor,
+    #         maxval=self._config.neck_pitch_range[1] * self._config.head_range_factor,
+    #     )
+    #     random_head_pitch = jax.random.uniform(
+    #         rng6,
+    #         minval=self._config.head_pitch_range[0] * self._config.head_range_factor,
+    #         maxval=self._config.head_pitch_range[1] * self._config.head_range_factor,
+    #     )
 
-        head_roll = jax.random.uniform(
-            rng8,
-            minval=self._config.head_roll_range[0] * self._config.head_range_factor,
-            maxval=self._config.head_roll_range[1] * self._config.head_range_factor,
-        )
+    #     # 2. 定義我們期望的固定前傾姿態
+    #     # 我們將目標前傾角度 (0.2 弧度) 分配給 neck_pitch
+    #     target_neck_pitch = 0.2
+    #     target_head_pitch = 0.0
 
-        # 嘗試強制為0
-        # head_roll = 0.0
-        # head_yaw = 0.0
+    #     # 3. 進行加權平均，產生一個融合後的指令
+    #     # blending_weight 越接近 1.0，我們的固定目標影響就越大
+    #     blending_weight = 0.5 
+    #     neck_pitch = (
+    #         random_neck_pitch * (1 - blending_weight)
+    #         + target_neck_pitch * blending_weight
+    #     )
+    #     head_pitch = (
+    #         random_head_pitch * (1 - blending_weight)
+    #         + target_head_pitch * blending_weight
+    #     )
+    #     # --- ▲▲▲ 修改結束 ▲▲▲ ---
 
-        # # 有 50% 的機率進入「無頭部控制模式」
-        # no_head_control_mode = jax.random.bernoulli(rng9, p=0.5)
+    #     # head_yaw 和 head_roll 保持不變
+    #     head_yaw = jax.random.uniform(
+    #         rng7,
+    #         minval=self._config.head_yaw_range[0] * self._config.head_range_factor,
+    #         maxval=self._config.head_yaw_range[1] * self._config.head_range_factor,
+    #     )
 
-        # # 如果進入該模式，就將所有頭部指令覆寫為 0
-        # # neck_pitch = jp.where(no_head_control_mode, 0.0, neck_pitch)
-        # # head_pitch = jp.where(no_head_control_mode, 0.0, head_pitch)
-        # head_yaw = jp.where(no_head_control_mode, 0.0, head_yaw)
-        # head_roll = jp.where(no_head_control_mode, 0.0, head_roll)
+    #     head_roll = jax.random.uniform(
+    #         rng8,
+    #         minval=self._config.head_roll_range[0] * self._config.head_range_factor,
+    #         maxval=self._config.head_roll_range[1] * self._config.head_range_factor,
+    #     )
 
-        # With 10% chance, set everything to zero.
-        return jp.where(
-            jax.random.bernoulli(rng4, p=0.3),
-            jp.zeros(7),
-            jp.hstack(
-                [
-                    lin_vel_x,
-                    lin_vel_y,
-                    ang_vel_yaw,
-                    neck_pitch,
-                    head_pitch,
-                    head_yaw,
-                    head_roll,
-                ]
-            ),
-        )
+    #     # 嘗試強制為0
+    #     # head_roll = 0.0
+    #     # head_yaw = 0.0
+
+    #     # # 有 50% 的機率進入「無頭部控制模式」
+    #     # no_head_control_mode = jax.random.bernoulli(rng9, p=0.5)
+
+    #     # # 如果進入該模式，就將所有頭部指令覆寫為 0
+    #     # # neck_pitch = jp.where(no_head_control_mode, 0.0, neck_pitch)
+    #     # # head_pitch = jp.where(no_head_control_mode, 0.0, head_pitch)
+    #     # head_yaw = jp.where(no_head_control_mode, 0.0, head_yaw)
+    #     # head_roll = jp.where(no_head_control_mode, 0.0, head_roll)
+
+    #     # With 10% chance, set everything to zero.
+    #     return jp.where(
+    #         jax.random.bernoulli(rng4, p=0.3),
+    #         jp.zeros(7),
+    #         jp.hstack(
+    #             [
+    #                 lin_vel_x,
+    #                 lin_vel_y,
+    #                 ang_vel_yaw,
+    #                 neck_pitch,
+    #                 head_pitch,
+    #                 head_yaw,
+    #                 head_roll,
+    #             ]
+    #         ),
+    #     )
