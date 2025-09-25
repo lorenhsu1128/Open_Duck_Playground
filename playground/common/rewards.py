@@ -527,56 +527,60 @@ def reward_head_forward_tilt(
   return -jp.square(total_head_pitch - target_tilt)
 
 
-# --- ▼▼▼ [核心修改 1] 更新 head_straight_standing 函式 ▼▼▼ ---
+# --- ▼▼▼ [核心修改 1] 新增 body_level 函式 ▼▼▼ ---
+# --- ▼▼▼ [核心修改] 使用加速度計數據重寫 reward_body_level ▼▼▼ ---
+def reward_body_level(
+    accelerometer_reading: jax.Array, # <-- 參數從 forward_vector 改為 accelerometer_reading
+    lin_vel_command: jax.Array,
+    ang_vel_command: float,
+    head_commands: jax.Array,
+    standing_threshold: float = 0.01,
+) -> float:
+  """
+  Penalizes the body for tilting forward or backward using accelerometer data,
+  ONLY when commanded to be perfectly still.
+  """
+  is_body_standing_command = (jp.sum(jp.abs(lin_vel_command)) < standing_threshold) & \
+                             (jp.abs(ang_vel_command) < standing_threshold)
+  is_head_still_command = jp.sum(jp.abs(head_commands)) < standing_threshold
+  should_apply_reward = is_body_standing_command & is_head_still_command
+
+  # 懲罰加速度計 X 軸的讀數，目標是讓其為 0 (代表身體水平)
+  # accelerometer_reading[0] 就是 X 軸的讀數
+  penalty = -jp.square(accelerometer_reading[0])
+  return jp.where(should_apply_reward, penalty, 0.0)
+# --- ▲▲▲ 修改結束 ▲▲▲ ---
+
+# --- ▼▼▼ [核心修改 2] 修正 head_straight_standing 函式 ▼▼▼ ---
 def head_straight_standing(
     head_yaw_angle: float,
     head_roll_angle: float,
     lin_vel_command: jax.Array,
     ang_vel_command: float,
-    head_commands: jax.Array, # <-- 新增這個參數
+    head_commands: jax.Array,
     standing_threshold: float = 0.01,
 ) -> float:
-  """
-  Penalizes non-zero head yaw and roll ONLY when the robot is commanded 
-  to be perfectly still (including the head).
-  """
-  # 條件 1: 身體指令是靜止
   is_body_standing_command = (jp.sum(jp.abs(lin_vel_command)) < standing_threshold) & \
                              (jp.abs(ang_vel_command) < standing_threshold)
-  # 條件 2: 頭部指令也是靜止
   is_head_still_command = jp.sum(jp.abs(head_commands)) < standing_threshold
-
-  # 只有在身體和頭部都被命令靜止時，才觸發這個獎勵
   should_apply_reward = is_body_standing_command & is_head_still_command
-
-  # 懲罰邏輯
   yaw_penalty = -jp.square(head_yaw_angle) * 3.0
   roll_penalty = -jp.square(head_roll_angle)
   orientation_penalty = yaw_penalty + roll_penalty
-
   return jp.where(should_apply_reward, orientation_penalty, 0.0)
-# --- ▲▲▲ 修改結束 ▲▲▲ ---
 
-
-# --- ▼▼▼ [核心修改 2] 更新 ideal_standing_hips 函式 ▼▼▼ ---
+# --- ▼▼▼ [核心修改 3] 修正 ideal_standing_hips 函式 ▼▼▼ ---
 def ideal_standing_hips(
     qpos_actuators: jax.Array,
     lin_vel_command: jax.Array,
     ang_vel_command: float,
-    head_commands: jax.Array, # <-- 新增這個參數
+    head_commands: jax.Array,
     standing_threshold: float = 0.01,
 ) -> float:
-  """
-  Penalizes deviation from an ideal standing hip posture
-  ONLY when the robot is commanded to be perfectly still (including the head).
-  """
   is_body_standing_command = (jp.sum(jp.abs(lin_vel_command)) < standing_threshold) & \
                              (jp.abs(ang_vel_command) < standing_threshold)
   is_head_still_command = jp.sum(jp.abs(head_commands)) < standing_threshold
-
   should_apply_reward = is_body_standing_command & is_head_still_command
-
-  # 懲罰邏輯
   left_hip_yaw = qpos_actuators[0]
   left_hip_roll = qpos_actuators[1]
   left_hip_pitch = qpos_actuators[2]
@@ -585,7 +589,6 @@ def ideal_standing_hips(
   right_hip_roll = qpos_actuators[10]
   right_hip_pitch = qpos_actuators[11]
   right_knee = qpos_actuators[12]
-  
   total_deviation = (
       jp.abs(left_hip_roll) + jp.abs(right_hip_roll) +
       jp.abs(left_hip_yaw) + jp.abs(right_hip_yaw) +
@@ -593,31 +596,38 @@ def ideal_standing_hips(
       jp.abs(left_knee - right_knee)
   )
   total_penalty = -total_deviation
-  
   return jp.where(should_apply_reward, total_penalty, 0.0)
-# --- ▲▲▲ 修改結束 ▲▲▲ ---
 
-
-# --- ▼▼▼ [核心修改 3] 新增 balance_with_head_motion 函式 ▼▼▼ ---
+# --- ▼▼▼ [核心修改 4] 新增 balance_with_head_motion 函式 ▼▼▼ ---
+# --- ▼▼▼ [核心修改] 使用腳掌高度來重寫平衡獎勵函式 ▼▼▼ ---
 def reward_balance_with_head_motion(
-    feet_contacts: jax.Array,
+    feet_positions: jax.Array, # <-- 參數從 feet_contacts 改為 feet_positions
     lin_vel_command: jax.Array,
     ang_vel_command: float,
     head_commands: jax.Array,
     standing_threshold: float = 0.01,
 ) -> float:
   """
-  Rewards the robot for keeping both feet on the ground while being commanded
-  to stand still and only move its head.
+  Penalizes the height of the feet off the ground while being commanded
+  to stand still and only move its head. This provides a continuous signal.
   """
+  # 條件 1: 身體指令是靜止
   is_standing_command = (jp.sum(jp.abs(lin_vel_command)) < standing_threshold) & \
                         (jp.abs(ang_vel_command) < standing_threshold)
-  is_head_only_command = jp.sum(jp.abs(head_commands)) > 0.0
-  both_feet_on_ground = jp.all(feet_contacts)
 
+  # 條件 2: 指令要求頭部運動
+  is_head_only_command = jp.sum(jp.abs(head_commands)) > 0.0
+
+  # 獲取雙腳的 Z 軸高度 (feet_positions 是一個 [2, 3] 的陣列)
+  feet_heights = feet_positions[:, 2]
+  
+  # 計算懲罰值：腳離地越高，懲罰越重
+  # 我們只懲罰正的高度 (腳在地面以下是允許的)
+  height_penalty = -jp.sum(jax.nn.relu(feet_heights))
+
+  # 只有在「站立」且「僅頭部運動」的指令下達時，才啟用懲罰
   should_apply_reward = is_standing_command & is_head_only_command
   
-  reward_value = jp.where(both_feet_on_ground, 1.0, -1.0)
-
-  return jp.where(should_apply_reward, reward_value, 0.0)
+  return jp.where(should_apply_reward, height_penalty, 0.0)
 # --- ▲▲▲ 修改結束 ▲▲▲ ---
+

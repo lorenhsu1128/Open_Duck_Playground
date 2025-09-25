@@ -51,6 +51,7 @@ from playground.common.rewards import (
     reward_head_forward_tilt,
     head_straight_standing,
     ideal_standing_hips,
+    reward_body_level,
     reward_balance_with_head_motion,
 )
 from playground.open_duck_mini_v2.custom_rewards import reward_imitation
@@ -112,15 +113,16 @@ def default_config() -> config_dict.ConfigDict:
                 # legs_asymmetry=-1.5,  # <-- 雙腳不平行就扣分 第一次-0.5無效果
                 # head_roll_zero=4.0, #頭部roll維持0度的獎勵
                 head_orientation_walking=5.0, #走路時頭部儘量不動的獎勵
-                head_straight_standing=5.5, #站立時頭部回正的獎勵 4.0 +- 0.5 穩定版為5.5
+                head_straight_standing=5.0, #站立時頭部回正的獎勵 4.0 +- 0.5 穩定版為5.5
                 # hip_pitch_symmetry_standing=2.0, #站立時髖部回正的獎勵
                 # hips_straight_standing=3.0,
-                ideal_standing_hips=6.0, #站立時理想站姿的獎勵 穩定版為4.0
+                ideal_standing_hips=10.0, #站立時理想站姿的獎勵 穩定版為4.0
                 # hip_pitch_in_turn=2.0, # 轉彎時的抬腳獎勵，可以從 1.0 ~ 2.0 開始嘗試
-                asymmetric_turning_gait=0.0, #2.5
+                asymmetric_turning_gait=1.0, #2.5
                 # 為頭部前傾設定一個權重
-                head_forward_tilt=5.0,
-                balance_with_head_motion=10.0,
+                head_forward_tilt=0.0, #5.0
+                body_level=2.5,
+                balance_with_head_motion=6.0,
             ),
             tracking_sigma=0.01,  # was working at 0.01
         ),
@@ -822,6 +824,10 @@ class Joystick(open_duck_mini_v2_base.OpenDuckMiniV2Env):
         neck_pitch_angle = qpos_actuators[5]
         head_pitch_angle = qpos_actuators[6]
 
+        accelerometer_reading = self.get_accelerometer(data)
+
+        # 獲取腳掌位置
+        feet_pos = self.get_feet_pos(data) # <-- 確保您有獲取這個數據
         
         # # 1. 計算基礎的角速度追蹤獎勵
         # tracking_ang_vel_reward = reward_tracking_ang_vel(
@@ -842,6 +848,31 @@ class Joystick(open_duck_mini_v2_base.OpenDuckMiniV2Env):
         #     tracking_ang_vel_reward * right_turn_bonus,
         #     tracking_ang_vel_reward
         # )
+
+        # --- ▼▼▼ [核心修改] 讓模仿獎勵在特定條件下失效 ▼▼▼ ---
+        
+        # 1. 判斷當前是否處於「站立動頭」的訓練情境
+        is_standing_command = (jp.sum(jp.abs(lin_vel_command)) < 0.01) & \
+                              (jp.abs(ang_vel_command) < 0.01)
+        is_head_only_command = jp.sum(jp.abs(head_commands)) > 0.0
+        is_active_balance_task = is_standing_command & is_head_only_command
+
+        # 2. 計算原始的模仿獎勵
+        imitation_reward = reward_imitation(
+            self.get_floating_base_qpos(data.qpos),
+            self.get_floating_base_qvel(data.qvel),
+            qpos_actuators,
+            self.get_actuator_joints_qvel(data.qvel),
+            contact,
+            info["current_reference_motion"],
+            info["command"],
+            USE_IMITATION_REWARD,
+        )
+        
+        # 3. 如果處於「站立動頭」任務，則將模仿獎勵清零，避免衝突
+        final_imitation_reward = jp.where(is_active_balance_task, 0.0, imitation_reward)
+        
+        # --- ▲▲▲ 修改結束 ▲▲▲ ---
 
         ret = {
             "tracking_lin_vel": reward_tracking_lin_vel(
@@ -942,22 +973,28 @@ class Joystick(open_duck_mini_v2_base.OpenDuckMiniV2Env):
                 neck_pitch_angle=neck_pitch_angle,
                 head_pitch_angle=head_pitch_angle,
             ),
-            # --- ▼▼▼ [核心修改] 使用更新後的獎勵函式 ▼▼▼ ---
+            # --- ▼▼▼ [核心修改] 更新獎勵函式的呼叫 ▼▼▼ ---
+            "body_level": reward_body_level(
+                accelerometer_reading=accelerometer_reading, # <-- 傳入加速度計數據
+                lin_vel_command=lin_vel_command,
+                ang_vel_command=ang_vel_command,
+                head_commands=head_commands,
+            ),
             "head_straight_standing": head_straight_standing(
                 head_yaw_angle=head_yaw_angle,
                 head_roll_angle=head_roll_angle,
                 lin_vel_command=lin_vel_command,
                 ang_vel_command=ang_vel_command,
-                head_commands=head_commands, # 傳入頭部指令
+                head_commands=head_commands,
             ),
             "ideal_standing_hips": ideal_standing_hips(
                 qpos_actuators=qpos_actuators,
                 lin_vel_command=lin_vel_command,
                 ang_vel_command=ang_vel_command,
-                head_commands=head_commands, # 傳入頭部指令
+                head_commands=head_commands,
             ),
             "balance_with_head_motion": reward_balance_with_head_motion(
-                feet_contacts=contact,
+                feet_positions=feet_pos, # <-- 確保傳遞的是 feet_pos
                 lin_vel_command=lin_vel_command,
                 ang_vel_command=ang_vel_command,
                 head_commands=head_commands,
