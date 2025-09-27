@@ -624,6 +624,7 @@ def reward_balance_with_head_motion(
   # 計算懲罰值：腳離地越高，懲罰越重
   # 我們只懲罰正的高度 (腳在地面以下是允許的)
   height_penalty = -jp.sum(jax.nn.relu(feet_heights))
+#   height_penalty = 0 #測試
 
   # 只有在「站立」且「僅頭部運動」的指令下達時，才啟用懲罰
   should_apply_reward = is_standing_command & is_head_only_command

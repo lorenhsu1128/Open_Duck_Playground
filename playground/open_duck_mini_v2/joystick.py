@@ -120,8 +120,8 @@ def default_config() -> config_dict.ConfigDict:
                 # hip_pitch_in_turn=2.0, # 轉彎時的抬腳獎勵，可以從 1.0 ~ 2.0 開始嘗試
                 asymmetric_turning_gait=1.0, #2.5
                 # 為頭部前傾設定一個權重
-                head_forward_tilt=0.0, #5.0
-                body_level=2.5,
+                # head_forward_tilt=0.0, #5.0
+                # body_level=0.0, #2.5
                 balance_with_head_motion=6.0,
             ),
             tracking_sigma=0.01,  # was working at 0.01
@@ -129,7 +129,7 @@ def default_config() -> config_dict.ConfigDict:
         push_config=config_dict.create(
             enable=USE_PUSH,
             interval_range=[5.0, 10.0],
-            magnitude_range=[0.1, 1.0],
+            magnitude_range=[0.5, 1.5], #magnitude_range=[0.1, 1.0],
         ),
         # 將 x 軸線速度的範圍從 [-0.15, 0.15] 擴大
         # lin_vel_x=[-0.15, 0.15], 
@@ -869,7 +869,21 @@ class Joystick(open_duck_mini_v2_base.OpenDuckMiniV2Env):
             USE_IMITATION_REWARD,
         )
         
-        # 3. 如果處於「站立動頭」任務，則將模仿獎勵清零，避免衝突
+        # 2. 計算原始的姿態獎勵
+        body_level_reward = reward_body_level(
+            accelerometer_reading=accelerometer_reading, # <-- 傳入加速度計數據
+            lin_vel_command=lin_vel_command,
+            ang_vel_command=ang_vel_command,
+            head_commands=head_commands,
+        )
+        head_forward_tilt_reward = reward_head_forward_tilt(
+            neck_pitch_angle=neck_pitch_angle,
+            head_pitch_angle=head_pitch_angle,
+        )
+        
+        # 3. 如果處於「站立動頭」任務，則將這兩個姿態獎勵清零，避免衝突
+        final_body_level_reward = jp.where(is_active_balance_task, 0.0, body_level_reward)
+        final_head_forward_tilt_reward = jp.where(is_active_balance_task, 0.0, head_forward_tilt_reward)
         final_imitation_reward = jp.where(is_active_balance_task, 0.0, imitation_reward)
         
         # --- ▲▲▲ 修改結束 ▲▲▲ ---
@@ -969,17 +983,9 @@ class Joystick(open_duck_mini_v2_base.OpenDuckMiniV2Env):
                 ang_vel_command=ang_vel_command,
             ),
             # 獎勵頭部微微前傾
-            "head_forward_tilt": reward_head_forward_tilt(
-                neck_pitch_angle=neck_pitch_angle,
-                head_pitch_angle=head_pitch_angle,
-            ),
+            # "head_forward_tilt": final_head_forward_tilt_reward,
             # --- ▼▼▼ [核心修改] 更新獎勵函式的呼叫 ▼▼▼ ---
-            "body_level": reward_body_level(
-                accelerometer_reading=accelerometer_reading, # <-- 傳入加速度計數據
-                lin_vel_command=lin_vel_command,
-                ang_vel_command=ang_vel_command,
-                head_commands=head_commands,
-            ),
+            # "body_level": final_body_level_reward,
             "head_straight_standing": head_straight_standing(
                 head_yaw_angle=head_yaw_angle,
                 head_roll_angle=head_roll_angle,
