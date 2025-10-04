@@ -4,6 +4,66 @@
 
 此專案包含了完整的機器人模型（XML 檔）、訓練環境設置、獎勵函數、訓練流程、以及將訓練好的模型匯出並進行推論（inference）的工具。
 
+好的，這沒有問題。我已經詳細閱讀了您提供的所有檔案，這是一個結構非常清晰的強化學習專案。
+
+以下是每個檔案與資料夾的用途詳解：
+
+### **專案根目錄**
+
+* **`.gitignore`**: Git 版本控制的設定檔，告訴 Git 哪些檔案或資料夾（例如 `__pycache__/`、`.DS_Store`）不需要被追蹤。
+* **`README.md` / `README_LOREN.md`**: 專案說明文件。`README.md` 通常是原始的說明，而 `README_LOREN.md` 是一份更詳細、客製化的版本，解釋了專案的總覽、檔案功能和如何執行。
+* **`pyproject.toml`**: Python 專案的標準設定檔。它定義了專案的依賴套件（如 `brax`, `mujoco`, `jax`）和建置工具（`uv`），讓您可以方便地建立虛擬環境並安裝所有必要的函式庫。
+
+---
+
+### **`playground/common/` (共用程式碼)**
+
+這個資料夾包含了整個專案通用的、可重複使用的程式碼，不針對任何特定的機器人。
+
+* **`runner.py`**: 定義了 `BaseRunner` 類別，是整個訓練流程的核心框架。它負責初始化 PPO (Proximal Policy Optimization) 演算法、設定訓練參數、啟動訓練循環、以及處理模型的儲存和記錄。
+* **`export_onnx.py`**: 提供將 JAX/Flax 格式的訓練模型轉換為 ONNX (Open Neural Network Exchange) 格式的工具。ONNX 是一個開放標準，讓模型可以在不同平台和框架之間使用。
+* **`onnx_infer.py`**: 提供 `OnnxInfer` 類別，用於載入 ONNX 模型並進行推論（inference）。`mujoco_infer.py` 會使用它來讀取訓練好的模型。
+* **`plot_saved_obs.py`**: 一個實用腳本，用於讀取在推論時儲存的 `mujoco_saved_obs.pkl` 檔案，並使用 `matplotlib` 將機器人的觀測數據（如速度、關節角度）繪製成圖表，方便分析。
+* **`poly_reference_motion.py` / `poly_reference_motion_numpy.py`**: 用於處理和計算「參考動作」的類別。它們會讀取 `polynomial_coefficients.pkl` 檔案，並根據給定的指令計算出機器人應該模仿的目標關節姿態。一個使用 JAX (用於訓練)，另一個使用 NumPy。
+* **`randomize.py`**: 實現「領域隨機化 (Domain Randomization)」功能。在訓練過程中，它會隨機調整模擬環境的物理參數（如摩擦力、質量），以增強訓練出模型的泛化能力，使其更能適應真實世界。
+* **`rewards.py` / `rewards_numpy.py`**: 包含一系列標準的獎勵/懲罰函數，例如追蹤速度的獎勵、消耗力矩的懲罰、維持存活的獎勵等。
+* **`utils.py`**: 包含一些通用的工具函式，例如用於平滑化輸出動作的低通濾波器 `LowPassActionFilter`。
+
+---
+
+### **`playground/open_duck_mini_v2/` (機器人專屬程式碼)**
+
+這個資料夾包含了所有專為 "Open Duck Mini V2" 這款雙足機器人設計的程式碼。
+
+* **`base.py`**: 定義了 `OpenDuckMiniV2Env` 這個基礎環境類別，所有該機器人的特定任務都會繼承它。它負責載入 MuJoCo 模型和處理基本的機器人狀態讀取。
+* **`constants.py`**: 存放專為此機器人設計的常數，例如 XML 模型的路徑、身體部位的名稱等，避免在程式碼中寫死字串。
+* **`custom_rewards.py` / `custom_rewards_numpy.py`**: 實現此機器人專屬的客製化獎勵函數，例如模仿參考動作的 `reward_imitation`。
+* **`joystick.py`**: 定義「搖桿 (joystick)」任務的環境。目標是訓練機器人根據隨機生成的速度指令來行走。它組合了 `common/rewards.py` 中的獎勵函數來形成這個任務的總獎勵。
+* **`standing.py`**: 定義「站立 (standing)」任務的環境。目標是訓練機器人在受到外力干擾時仍能保持平衡。
+* **`mujoco_infer.py`**: **執行即時推論的腳本**。它會載入一個訓練好的 `.onnx` 模型，並打開一個 MuJoCo 互動視窗，讓您可以用鍵盤控制機器人並觀察其表現。
+* **`mujoco_infer_base.py`**: `mujoco_infer.py` 的基礎類別，處理底層的模型載入和狀態更新。
+* **`ref_motion_viewer.py`**: 一個視覺化工具，用於在 MuJoCo 視窗中單獨觀察 `polynomial_coefficients.pkl` 中定義的參考動作，方便偵錯。
+* **`runner.py`**: **啟動訓練的主要腳本**。它會解析命令列參數（例如 `--env joystick`），然後呼叫 `common/runner.py` 中的框架來開始針對此機器人的訓練。
+* **`data/polynomial_coefficients.pkl`**: 儲存了用多項式擬合的步態資料，作為機器人模仿學習的目標。
+
+---
+
+### **`playground/open_duck_mini_v2/xmls/` (MuJoCo 模擬模型)**
+
+這個資料夾是整個模擬專案的**物理核心**，定義了機器人和它所在的世界。
+
+* **`open_duck_mini_v2.xml`**: **核心機器人模型檔**。用 XML 格式詳細描述了機器人的所有連桿 (`body`)、關節 (`joint`)、質量 (`inertial`)、致動器 (`actuator`) 和 3D 視覺模型 (`geom`)。
+* **`open_duck_mini_v2_backlash.xml`**: 上述模型的一個特殊版本，額外加入了「背隙 (backlash)」關節，用來模仿真實世界中齒輪之間的微小間隙，讓模擬更貼近現實。
+* **`scene_*.xml` (場景檔案)**: 這些檔案定義了「世界」。它們會透過 `<include>` 標籤將機器人模型載入，並將其放置在一個特定的環境中。
+    * `scene_flat_terrain.xml`: 包含一個無限大的平坦地面。
+    * `scene_rough_terrain_backlash.xml`: 建立一個崎嶇不平的地面。
+    * `scene_combined_terrain_backlash.xml`: 建立一個同時包含平地和崎嶇地的混合場景。
+* **`joints_properties.xml` / `sensors.xml`**: 模組化的設定檔，分別定義了所有關節馬達的通用屬性和所有感測器的屬性，被主模型檔案引用，使結構更清晰。
+* **`config.json`**: 一個 JSON 格式的設定檔。
+* **`assets/` (資產資料夾)**:
+    * **`*.stl` / `*.part`**: 機器人各個零件的 3D 模型檔案，用於在模擬中視覺化呈現。
+    * **`hfield.png`**: 一張灰階圖片，作為高度圖，用來生成崎嶇不平的地形。
+
 ### PY 檔案功能詳解
 
 以下是每個 `.py` 檔案的功能說明：
