@@ -512,6 +512,53 @@ def reward_asymmetric_turning_gait(
   # 總獎勵是兩者之和 (因為在任何時刻，只可能有一個不為零)
   return left_turn_reward + right_turn_reward
 
+# 非對稱轉彎步態獎勵
+# def reward_asymmetric_turning_gait(
+#     left_hip_pitch_angle: float,
+#     right_hip_pitch_angle: float,
+#     ang_vel_command: float,
+#     turn_threshold: float = 0.1,
+# ) -> float:
+#     """
+#     Rewards a coordinated turning gait, scaled by the magnitude of the turn command.
+#     """
+
+#     # 判斷指令是否為左轉
+#     is_turning_left = ang_vel_command < -turn_threshold
+#     # 判斷指令是否為右轉
+#     is_turning_right = ang_vel_command > turn_threshold
+
+#     #
+#     # ======> 在下方修改獎勵計算邏輯 <======
+#     #
+
+#     # 步驟 1: 計算基礎的步態協調性分數
+#     #    - 左轉時，我們期望 right_hip_pitch > 0 (外側腿向前) 且 left_hip_pitch > 0 (內側腿向後)
+#     #    - 右轉時，我們期望 left_hip_pitch < 0 (外側腿向前) 且 right_hip_pitch < 0 (內側腿向後)
+    
+#     # 左轉時的協調分數
+#     left_turn_coordination = jp.maximum(0, right_hip_pitch_angle) + jp.maximum(0, left_hip_pitch_angle)
+    
+#     # 右轉時的協調分數
+#     right_turn_coordination = jp.maximum(0, -left_hip_pitch_angle) + jp.maximum(0, -right_hip_pitch_angle)
+
+#     # 步驟 2: 將協調分數與轉彎指令的絕對值相乘
+#     #    - ang_vel_command 的絕對值代表了指令的強度
+#     #    - 這使得獎勵與指令幅度成正比
+    
+#     # 左轉時的最終獎勵
+#     left_turn_reward = left_turn_coordination * jp.abs(ang_vel_command) * is_turning_left
+    
+#     # 右轉時的最終獎勵
+#     right_turn_reward = right_turn_coordination * jp.abs(ang_vel_command) * is_turning_right
+
+#     #
+#     # ======> 修改結束 <======
+#     #
+
+#     # 總獎勵是兩者之和
+#     return left_turn_reward + right_turn_reward
+
 # 獎勵頭部微微前傾
 def reward_head_forward_tilt(
     neck_pitch_angle: float,
@@ -631,4 +678,38 @@ def reward_balance_with_head_motion(
   
   return jp.where(should_apply_reward, height_penalty, 0.0)
 # --- ▲▲▲ 修改結束 ▲▲▲ ---
+
+
+def reward_swing_height_moving(
+    lin_vel_command: jax.Array,
+    ang_vel_command: jax.Array,
+    contact: jax.Array,
+    feet_pos: jax.Array,
+    turn_threshold: float,
+) -> jax.Array:
+    """
+    Rewards the height of the swing foot only when a move command is given.
+    """
+    # 1. 判斷是否有任何移動指令 (前進、後退、橫移、轉彎)
+    is_moving_command = (jp.abs(lin_vel_command[0]) > 0.01) | \
+                        (jp.abs(lin_vel_command[1]) > 0.01) | \
+                        (jp.abs(ang_vel_command) > turn_threshold)
+
+    # 2. 根據 contact 變數定義擺動狀態
+    is_left_swing = 1.0 - contact[0]
+    is_right_swing = 1.0 - contact[1]
+
+    # 3. 取得腳掌在世界座標系中的 Z 軸高度
+    left_foot_z_pos = feet_pos[0, 2]
+    right_foot_z_pos = feet_pos[1, 2]
+    
+    # 4. 計算基礎的抬腳高度獎勵
+    base_swing_height_reward = (
+        is_left_swing * left_foot_z_pos + is_right_swing * right_foot_z_pos
+    ) / (is_left_swing + is_right_swing + 1e-6)
+
+    # 5. 只有在收到移動指令時，這個獎勵才生效
+    swing_height_moving_reward = jp.where(is_moving_command, base_swing_height_reward, 0.0)
+
+    return swing_height_moving_reward
 

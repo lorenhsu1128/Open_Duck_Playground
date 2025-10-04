@@ -53,6 +53,7 @@ from playground.common.rewards import (
     ideal_standing_hips,
     reward_body_level,
     reward_balance_with_head_motion,
+    reward_swing_height_moving,
 )
 from playground.open_duck_mini_v2.custom_rewards import reward_imitation
 
@@ -123,8 +124,10 @@ def default_config() -> config_dict.ConfigDict:
                 # head_forward_tilt=0.0, #5.0
                 # body_level=0.0, #2.5
                 balance_with_head_motion=6.0,
+                swing_height_moving=12.0,
             ),
             tracking_sigma=0.01,  # was working at 0.01
+            turn_threshold=0.1,
         ),
         push_config=config_dict.create(
             enable=USE_PUSH,
@@ -133,9 +136,9 @@ def default_config() -> config_dict.ConfigDict:
         ),
         # 將 x 軸線速度的範圍從 [-0.15, 0.15] 擴大
         # lin_vel_x=[-0.15, 0.15], 
-        lin_vel_x=[-0.20, 0.20], 
+        lin_vel_x=[-0.20, 0.20], # 0.2m/秒
         lin_vel_y=[-0.2, 0.2],
-        ang_vel_yaw=[-1.5, 1.5],  # [-1.0, 1.0]
+        ang_vel_yaw=[-1.5, 1.5],  # [-1.0, 1.0] 1.5rad/秒
         neck_pitch_range=[-0.34, 1.1],
         head_pitch_range=[-0.78, 0.78],
         head_yaw_range=[-1.5, 1.5],
@@ -816,6 +819,13 @@ class Joystick(open_duck_mini_v2_base.OpenDuckMiniV2Env):
         left_hip_pitch = qpos_actuators[2]
         right_hip_pitch = qpos_actuators[11]
         ang_vel_command = info["command"][2]
+        turn_threshold = self._config.reward_config.turn_threshold
+
+        # 取得所有需要的數據
+        qpos_actuators = self.get_actuator_joints_qpos(data.qpos)
+        # left_hip_pitch = qpos_actuators[2]
+        # right_hip_pitch = qpos_actuators[11]
+        # feet_pos = self.get_feet_pos(data) # 這個數據需要保留，因為多個函式都會用到
 
         head_commands = info["command"][3:]
         
@@ -977,10 +987,16 @@ class Joystick(open_duck_mini_v2_base.OpenDuckMiniV2Env):
             #     ang_vel_command=ang_vel_command,
             # ),
             # 非對稱轉彎步態獎勵
+            # "asymmetric_turning_gait": reward_asymmetric_turning_gait(
+            #     left_hip_pitch_angle=left_hip_pitch,
+            #     right_hip_pitch_angle=right_hip_pitch,
+            #     ang_vel_command=ang_vel_command,
+            # ),
             "asymmetric_turning_gait": reward_asymmetric_turning_gait(
                 left_hip_pitch_angle=left_hip_pitch,
                 right_hip_pitch_angle=right_hip_pitch,
                 ang_vel_command=ang_vel_command,
+                turn_threshold=turn_threshold,
             ),
             # 獎勵頭部微微前傾
             # "head_forward_tilt": final_head_forward_tilt_reward,
@@ -1004,6 +1020,13 @@ class Joystick(open_duck_mini_v2_base.OpenDuckMiniV2Env):
                 lin_vel_command=lin_vel_command,
                 ang_vel_command=ang_vel_command,
                 head_commands=head_commands,
+            ),
+            "swing_height_moving": reward_swing_height_moving(
+                lin_vel_command=lin_vel_command,
+                ang_vel_command=ang_vel_command,
+                contact=contact,
+                feet_pos=feet_pos,
+                turn_threshold=turn_threshold,
             ),
         }
 
@@ -1039,6 +1062,7 @@ class Joystick(open_duck_mini_v2_base.OpenDuckMiniV2Env):
         # 60% 機率移動，20% 機率完全靜止，20% 機率站立動頭
         command = jax.lax.switch(
             jax.random.choice(key_case, 3, p=jp.array([0.6, 0.2, 0.2])),
+            # jax.random.choice(key_case, 3, p=jp.array([0.8, 0.1, 0.1])),
             [lambda: move_command, lambda: stand_command, lambda: stand_and_move_head_command],
         )
         return command
