@@ -278,6 +278,42 @@ class MJInferBase:
         return False
 
     def get_feet_contacts(self, data):
-        left_contact = self.check_contact(data, "foot_assembly", "floor")
-        right_contact = self.check_contact(data, "foot_assembly_2", "floor")
+        # left_contact = self.check_contact(data, "foot_assembly", "floor")
+        # right_contact = self.check_contact(data, "foot_assembly_2", "floor")
+        # return left_contact, right_contact
+        try:
+            # First, try the original method for scenes with a "floor" body.
+            left_contact = self.check_contact(data, "foot_assembly", "floor")
+            right_contact = self.check_contact(data, "foot_assembly_2", "floor")
+        except KeyError:
+            # If "floor" body is not found, check for specific floor geoms instead.
+            floor_geom_names = ["flat_floor", "rough_floor"]
+            left_contact = self.check_contact_with_geoms(data, "foot_assembly", floor_geom_names)
+            right_contact = self.check_contact_with_geoms(data, "foot_assembly_2", floor_geom_names)
+
         return left_contact, right_contact
+
+    def check_contact_with_geoms(self, data, body_name, geom_names):
+        """Checks if a body is in contact with any of a list of specified geoms."""
+        try:
+            body_id = data.body(body_name).id
+            geom_ids = [mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_GEOM, name) for name in geom_names]
+        except KeyError as e:
+            print(f"Invalid name provided for contact check: {e}")
+            return False
+
+        for i in range(data.ncon):
+            contact = data.contact[i]
+
+            # Condition 1: geom1 belongs to the body and geom2 is one of the target floor geoms
+            cond1 = (self.model.geom_bodyid[contact.geom1] == body_id and
+                     contact.geom2 in geom_ids)
+
+            # Condition 2: geom2 belongs to the body and geom1 is one of the target floor geoms
+            cond2 = (self.model.geom_bodyid[contact.geom2] == body_id and
+                     contact.geom1 in geom_ids)
+
+            if cond1 or cond2:
+                return True  # Contact found
+
+        return False  # No contact found
