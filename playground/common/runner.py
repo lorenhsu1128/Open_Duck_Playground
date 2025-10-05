@@ -1,7 +1,4 @@
-"""
-Defines a common runner between the different robots.
-Inspired from https://github.com/kscalelabs/mujoco_playground/blob/master/playground/common/runner.py
-"""
+
 
 from pathlib import Path
 from abc import ABC

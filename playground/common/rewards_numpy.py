@@ -1,7 +1,4 @@
-"""
-Set of commonly used rewards
-For examples on how to use some rewards, look at https://github.com/google-deepmind/mujoco_playground/blob/main/mujoco_playground/_src/locomotion/berkeley_humanoid/joystick.py
-"""
+
 
 # import jax
 # import jax.numpy as np
