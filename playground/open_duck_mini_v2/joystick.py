@@ -101,30 +101,28 @@ def default_config() -> config_dict.ConfigDict:
         ),
         reward_config=config_dict.create(
             scales=config_dict.create(
-                # tracking_lin_vel=2.5,
-                # tracking_ang_vel=6.0,
-                tracking_lin_vel=4.0,
-                tracking_ang_vel=10.0,
+                tracking_lin_vel=4.0, # 平地穩定版為 4.0
+                tracking_ang_vel=10.0, # 平地穩定版為 10.0
                 torques=-1.0e-3,
                 action_rate=-0.5,  # was -1.5
                 stand_still=-0.2,  # was -1.0 TODO try to relax this a bit ?
                 alive=20.0,
-                imitation=1.5, # 1.5 穩定版為2.0
-                # symmetry=4.5, # 雙腳平行就加分，有效果，可以修正雙腳站立時不正的狀況 5.0站姿歪斜
-                # legs_asymmetry=-1.5,  # <-- 雙腳不平行就扣分 第一次-0.5無效果
-                # head_roll_zero=4.0, #頭部roll維持0度的獎勵
-                head_orientation_walking=5.0, #走路時頭部儘量不動的獎勵
-                head_straight_standing=5.0, #站立時頭部回正的獎勵 4.0 +- 0.5 穩定版為5.5
-                # hip_pitch_symmetry_standing=2.0, #站立時髖部回正的獎勵
-                # hips_straight_standing=3.0,
-                ideal_standing_hips=10.0, #站立時理想站姿的獎勵 穩定版為4.0
-                # hip_pitch_in_turn=2.0, # 轉彎時的抬腳獎勵，可以從 1.0 ~ 2.0 開始嘗試
-                asymmetric_turning_gait=1.0, #2.5
+                imitation=1.5, # 平地穩定版為 1.5
+                ## symmetry=4.5, # 雙腳平行就加分，有效果，可以修正雙腳站立時不正的狀況 5.0站姿歪斜
+                ## legs_asymmetry=-1.5,  # <-- 雙腳不平行就扣分 第一次-0.5無效果
+                ## head_roll_zero=4.0, #頭部roll維持0度的獎勵
+                head_orientation_walking=5.0, # 平地穩定版為 5.0
+                head_straight_standing=5.0, # 平地穩定版為5.0，崎嶇從 0.0
+                ## hip_pitch_symmetry_standing=2.0, #站立時髖部回正的獎勵
+                ## hips_straight_standing=3.0,
+                ideal_standing_hips=10.0, #站立時理想站姿的獎勵 平地穩定版為10.0，崎嶇從 0.0
+                ## hip_pitch_in_turn=2.0, # 轉彎時的抬腳獎勵，可以從 1.0 ~ 2.0 開始嘗試
+                asymmetric_turning_gait=1.0, # 平地穩定版為 1.0
                 # 為頭部前傾設定一個權重
-                # head_forward_tilt=0.0, #5.0
-                # body_level=0.0, #2.5
-                balance_with_head_motion=6.0,
-                swing_height_moving=12.0,
+                ## head_forward_tilt=0.0, #5.0
+                ## body_level=0.0, #2.5
+                balance_with_head_motion=6.0, # 平地穩定版為 6.0
+                swing_height_moving=12.0, # 平地穩定版為 12.0
             ),
             tracking_sigma=0.01,  # was working at 0.01
             turn_threshold=0.1,
@@ -135,9 +133,8 @@ def default_config() -> config_dict.ConfigDict:
             magnitude_range=[0.5, 1.5], #magnitude_range=[0.1, 1.0],
         ),
         # 將 x 軸線速度的範圍從 [-0.15, 0.15] 擴大
-        # lin_vel_x=[-0.15, 0.15], 
         lin_vel_x=[-0.20, 0.20], # 0.2m/秒
-        lin_vel_y=[-0.2, 0.2],
+        lin_vel_y=[-0.2, 0.2], # 0.2m/秒
         ang_vel_yaw=[-1.5, 1.5],  # [-1.0, 1.0] 1.5rad/秒
         neck_pitch_range=[-0.34, 1.1],
         head_pitch_range=[-0.78, 0.78],
@@ -263,6 +260,10 @@ class Joystick(open_duck_mini_v2_base.OpenDuckMiniV2Env):
         #     1 / self._config.ctrl_dt, cutoff_frequency=37.5
         # )
 
+        # 建立一個旗標，檢查載入的 XML 檔案路徑中是否包含 "combined_terrain"
+        # self.xml_path 是在父類別中被賦值的
+        self.is_combined_terrain = 'combined_terrain' in self.xml_path
+
     def reset(self, rng: jax.Array) -> mjx_env.State:
         qpos = self._init_q  # the complete qpos
         # print(f'DEBUG0 init qpos: {qpos}')
@@ -282,15 +283,36 @@ class Joystick(open_duck_mini_v2_base.OpenDuckMiniV2Env):
         #                     lambda: 20.0)  # 崎嶇地面的中心 X 座標
         # # ----- 新增結束 -----
 
-        rng, key = jax.random.split(rng)
-        dxy = jax.random.uniform(key, (2,), minval=-0.05, maxval=0.05)
+         # 只有當 is_combined_terrain 旗標為 True 時，才執行複合場景的出生邏輯
+        if self.is_combined_terrain:
+            rng, key_terrain = jax.random.split(rng)
+            # 隨機選擇 0 (平地) 或 1 (崎嶇地)
+            terrain_choice = jax.random.randint(key_terrain, shape=(), minval=0, maxval=2)
+            # 根據選擇，設定基礎出生點的 X 座標
+            start_x = jax.lax.cond(terrain_choice == 0, lambda: 0.0, lambda: 20.0)
+            dxy = jax.random.uniform(key, (2,), minval=-0.5, maxval=0.5)
+            final_start_pos = jp.array([start_x + dxy[0], dxy[1]])
+        else:
+            # 否則，執行原始的、適用於單一場景的出生邏輯
+            dxy = jax.random.uniform(key, (2,), minval=-0.05, maxval=0.05)
+            final_start_pos = dxy
 
-        # floating base
+        # 使用計算出的 final_start_pos 來設定位置
         base_qpos = self.get_floating_base_qpos(qpos)
         base_qpos = base_qpos.at[0:2].set(
             qpos[self._floating_base_qpos_addr : self._floating_base_qpos_addr + 2]
-            + dxy
-        )  # x y noise
+            + final_start_pos
+        )
+        
+        # rng, key = jax.random.split(rng)
+        # dxy = jax.random.uniform(key, (2,), minval=-0.05, maxval=0.05)
+
+        # # floating base
+        # base_qpos = self.get_floating_base_qpos(qpos)
+        # base_qpos = base_qpos.at[0:2].set(
+        #     qpos[self._floating_base_qpos_addr : self._floating_base_qpos_addr + 2]
+        #     + dxy
+        # )  # x y noise
 
         rng, key = jax.random.split(rng)
         yaw = jax.random.uniform(key, (1,), minval=-3.14, maxval=3.14)
@@ -898,6 +920,44 @@ class Joystick(open_duck_mini_v2_base.OpenDuckMiniV2Env):
         
         # --- ▲▲▲ 修改結束 ▲▲▲ ---
 
+        # --- 計算原始的姿態獎勵 ---
+        head_straight_standing_reward = head_straight_standing(
+            head_yaw_angle=head_yaw_angle,
+            head_roll_angle=head_roll_angle,
+            lin_vel_command=lin_vel_command,
+            ang_vel_command=ang_vel_command,
+            head_commands=head_commands,
+        )
+        ideal_standing_hips_reward = ideal_standing_hips(
+            qpos_actuators=qpos_actuators,
+            lin_vel_command=lin_vel_command,
+            ang_vel_command=ang_vel_command,
+            head_commands=head_commands,
+        )
+        
+        #
+        # ======> 在這裡加入條件判斷 <======
+        #
+        # 只有當 is_combined_terrain 旗標為 True 時，才執行環境感知的獎勵切換邏輯
+        if self.is_combined_terrain:
+            root_body_pos = self.get_floating_base_qpos(data.qpos)
+            robot_x_position = root_body_pos[0]
+            # 根據您的 XML，邊界在 X=10
+            is_on_flat_terrain = robot_x_position < 10.0
+            
+            final_head_straight_standing_reward = jp.where(
+                is_on_flat_terrain, head_straight_standing_reward, 0.0
+            )
+            final_ideal_standing_hips_reward = jp.where(
+                is_on_flat_terrain, ideal_standing_hips_reward, 0.0
+            )
+        else:
+            # 否則，直接使用原始的獎勵值，不進行任何切換
+            final_head_straight_standing_reward = head_straight_standing_reward
+            final_ideal_standing_hips_reward = ideal_standing_hips_reward
+        #
+        # ======> 條件判斷結束 <======
+
         ret = {
             "tracking_lin_vel": reward_tracking_lin_vel(
                 info["command"],
@@ -1002,19 +1062,8 @@ class Joystick(open_duck_mini_v2_base.OpenDuckMiniV2Env):
             # "head_forward_tilt": final_head_forward_tilt_reward,
             # --- ▼▼▼ [核心修改] 更新獎勵函式的呼叫 ▼▼▼ ---
             # "body_level": final_body_level_reward,
-            "head_straight_standing": head_straight_standing(
-                head_yaw_angle=head_yaw_angle,
-                head_roll_angle=head_roll_angle,
-                lin_vel_command=lin_vel_command,
-                ang_vel_command=ang_vel_command,
-                head_commands=head_commands,
-            ),
-            "ideal_standing_hips": ideal_standing_hips(
-                qpos_actuators=qpos_actuators,
-                lin_vel_command=lin_vel_command,
-                ang_vel_command=ang_vel_command,
-                head_commands=head_commands,
-            ),
+            "head_straight_standing": final_head_straight_standing_reward,
+            "ideal_standing_hips": final_ideal_standing_hips_reward,
             "balance_with_head_motion": reward_balance_with_head_motion(
                 feet_positions=feet_pos, # <-- 確保傳遞的是 feet_pos
                 lin_vel_command=lin_vel_command,
