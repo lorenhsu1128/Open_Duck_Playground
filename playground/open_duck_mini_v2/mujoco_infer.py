@@ -16,9 +16,10 @@ USE_MOTOR_SPEED_LIMITS = True
 
 class MjInfer(MJInferBase):
     def __init__(
-        self, model_path: str, reference_data: str, onnx_model_path: str, standing: bool
+        self, model_path: str, reference_data: str, onnx_model_path: str, standing: bool, home_pos: list
     ):
-        super().__init__(model_path)
+        super().__init__(model_path, home_pos=home_pos)
+        self.home_pos = home_pos
 
         self.standing = standing
         self.head_control_mode = self.standing
@@ -186,9 +187,12 @@ class MjInfer(MJInferBase):
                 show_right_ui=True, # <-- 確保右側 UI 開啟
                 key_callback=self.key_callback,
             ) as viewer:
+                
                 counter = 0
                 while viewer.is_running():
 
+                    viewer.cam.lookat[0:2] = self.home_pos
+                    
                     step_start = time.time()
 
                     mujoco.mj_step(self.model, self.data)
@@ -317,11 +321,24 @@ if __name__ == "__main__":
         type=str,
         default="playground/open_duck_mini_v2/xmls/scene_flat_terrain_backlash.xml",
     )
+    # ----- 在下方新增這個參數 -----
+    parser.add_argument(
+        "--home_pos",
+        type=float,
+        nargs=2,
+        default=[0.0, 0.0], #平地的中心點是 (0.0, 0.0) 崎嶇地的中心點是 (20.0, 0.0) 交界處是 (10.0, 0.0)
+        help="Specify the initial x, y position of the robot. Default: 0.0 0.0",
+    )
+    # -----------------------------
     parser.add_argument("--standing", action="store_true", default=False)
 
     args = parser.parse_args()
 
     mjinfer = MjInfer(
-        args.model_path, args.reference_data, args.onnx_model_path, args.standing
+        args.model_path,
+        args.reference_data,
+        args.onnx_model_path,
+        args.standing,
+        home_pos=args.home_pos,
     )
     mjinfer.run()

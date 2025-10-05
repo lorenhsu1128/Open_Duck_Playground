@@ -5,8 +5,8 @@ from playground.open_duck_mini_v2 import base
 
 
 class MJInferBase:
-    def __init__(self, model_path):
-
+    def __init__(self, model_path, home_pos=[0.0, 0.0]):
+        self.home_pos = home_pos
         self.model = mujoco.MjModel.from_xml_string(
             epath.Path(model_path).read_text(), assets=base.get_assets()
         )
@@ -125,6 +125,10 @@ class MJInferBase:
         self.prev_motor_targets = self.default_actuator
 
         self.data.qpos[:] = self.model.keyframe("home").qpos
+        # ----- 在下方新增這兩行 -----
+        self.data.qpos[self._floating_base_qpos_addr] = home_pos[0]
+        self.data.qpos[self._floating_base_qpos_addr + 1] = home_pos[1]
+        # ---------------------------
         self.data.ctrl[:] = self.default_actuator
 
     def get_actuator_id_from_name(self, name: str) -> int:
